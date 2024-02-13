@@ -1,4 +1,5 @@
 #include "mmu.h"
+#include "utils.h"
 
 uint32_t get_ttbr0()
 {
@@ -55,10 +56,6 @@ void set_ttbr1(translation_table_t* table)
 #define SECTION_DOMAIN(domain_num) ((domain_num) << 5)
 #define L2_DOMAIN(domain_num) ((domain_num) << 5)
 
-/* void set_ttcr(uint32_t ttcr) { */
-/*     asm volatile ("MCR p15, 0, %0, c2, c0, 2" : :"r" (ttcr)); */
-/* } */
-
 void set_dacr(uint dacr)
 {
     asm volatile("MCR p15, 0, %0, c3, c0, 0" : : "r"(dacr));
@@ -78,18 +75,21 @@ void mmu_on()
 
 translation_table_t bootstrap_map;
 
+void map_sections(translation_table_t* table, uint32_t va, uint32_t pa, uint32_t size, uint32_t flags)
+{
+    int start_index = va / SECTION_SIZE;
+    int end_index = CEIL_DIV(va + size, SECTION_SIZE);
+    for (int i = start_index; i < end_index; i++) {
+        table->entries[i] = (SECTION_SIZE * i) | TT_ENTRY_SECTION | flags;
+    }
+}
+
 void mmu_init()
 {
-    // 1:1 maaping, using 1MB sections
-    for (int i = 0; i < TRANSLATION_TABLE_ENTRIES; i++) {
-        bootstrap_map.entries[i] = (SECTION_SIZE * i) | SECTION_AP(PERM_NONE) | TT_ENTRY_SECTION;
-    }
-
-    // the first 1G is MMIO, so set the B bit (as per ARMv7-A docs)
-    for (int i = 0; i < (0x40000000 / SECTION_SIZE); i++) {
-        bootstrap_map.entries[i] |= TT_ENTRY_B;
-    }
-
+    // Use 1:1 mapping for the first 2GB.
+    // The first 1G is MMIO, so set the B bit (as per ARMv7-A docs)
+    map_sections(&bootstrap_map, 0, 0, 0x40000000, SECTION_AP(PERM_NONE) | TT_ENTRY_B);
+    map_sections(&bootstrap_map, 0x40000000, 0x40000000, 0x80000000, SECTION_AP(PERM_NONE));
     set_ttbr0(&bootstrap_map);
 
     // set all domains as "clients". This means that the permission bits in the
