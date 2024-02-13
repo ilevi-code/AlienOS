@@ -3,3 +3,4 @@
 .gdbinit
 main.elf
 main.bin
+fs.img
