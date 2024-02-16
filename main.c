@@ -3,8 +3,7 @@
 
 extern char kernel_end[];
 
-void c_entry() {
-    mmu_init();
+void kernel_entry(void* dtb) {
     write_uart0("mmu on\n");
 
     panic("end");

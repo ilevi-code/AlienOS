@@ -1,6 +1,6 @@
 *.o
 .gdb_history
 .gdbinit
-main.elf
-main.bin
+*.elf
+*.bin
 fs.img
