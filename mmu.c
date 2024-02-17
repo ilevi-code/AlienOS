@@ -1,5 +1,4 @@
 #include "mmu.h"
-#include "utils.h"
 
 #define TRANSLATION_TABLE_ALIGN(table) (((uint32_t)(table)) & ~0x3fff)
 

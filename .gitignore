@@ -4,3 +4,8 @@
 *.elf
 *.bin
 fs.img
+
+
+# Added by cargo
+
+/target

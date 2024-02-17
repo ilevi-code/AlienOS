@@ -1,29 +1,25 @@
 TOOLCHAIN := arm-none-eabi-
 CC := $(TOOLCHAIN)gcc
 AS := $(TOOLCHAIN)as
-ASFLAGS := -g
-CFLAGS := -g -nostdlib -nostdinc
+LD := $(TOOLCHAIN)ld
+OBJCOPY := $(TOOLCHAIN)objcopy
+ASFLAGS := -g -march=armv7-a
+CFLAGS := -g -nostdlib -nostdinc -march=armv7-a
 
-SRC_DIR := .
+.PHONY: clean
 
-# CFILES := $(wildcard $(SRC_DIR)/*.c)
-CFILES := main.c console.c virtio.c mmu.c
-# ASMFILES := $(wildcard $(SRC_DIR)/*.s)
-ASMFILES := interrupt_vectors.s
-OBJFILES := $(patsubst %.c,%.o,$(CFILES)) $(patsubst %.s,%.o,$(ASMFILES))
-
-.PHONY: clean run
-
-kernel.bin: kernel.elf boot.elf
-	$(TOOLCHAIN)objcopy -O binary kernel.elf _kernel.bin
-	$(TOOLCHAIN)objcopy -O binary boot.elf _boot.bin
+kernel.bin: ./target/armv7a-none-eabi/debug/baremetal boot.elf
+	$(OBJCOPY) -O binary ./target/armv7a-none-eabi/debug/baremetal _kernel.bin
+	$(OBJCOPY) -O binary boot.elf _boot.bin
 	cat _boot.bin _kernel.bin > $@
 
-kernel.elf: $(OBJFILES)
-	$(TOOLCHAIN)ld -T kernel.ld $^ -o $@
+./target/armv7a-none-eabi/debug/baremetal: FORCE
+	cargo build
+
+FORCE: ;
 
 boot.elf: boot.o bootstrap_mmu.o mmu.o
-	$(TOOLCHAIN)ld -T boot.ld $^ -o $@
+	$(LD) -T boot.ld $^ -o $@
 
 clean:
 	$(RM)  *.bin *.elf *.o
