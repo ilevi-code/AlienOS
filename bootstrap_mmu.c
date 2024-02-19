@@ -26,10 +26,14 @@ void mmu_on()
                  : "=r"(status));
 }
 
-void mmu_init()
+translation_table_t* mmu_init()
 {
     uint32_t bootstrap_size = (&__end - &__start);
     uint32_t start = (uint32_t)&__start;
+
+    for (uint32_t i = 0; i < TRANSLATION_TABLE_ENTRIES; i++) {
+        bootstrap_table.entries[i] = 0;
+    }
 
     // TOOD remove this and add this in mapping in kernel_entry
     map_sections(&bootstrap_table, 0, 0, 0x40000000, SECTION_AP(PERM_NONE) | TT_ENTRY_B);
@@ -45,4 +49,6 @@ void mmu_init()
     set_dacr(0x77777777);
 
     mmu_on();
+
+    return &bootstrap_table;
 };

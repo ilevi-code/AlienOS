@@ -5,6 +5,7 @@ PHDRS {
 SECTIONS
 {
  . = 0xc0018000;
+ kernel_start = .;
  .entry : { entry.o(.text) } : text
  .text : { *(.text) }
  .data : { *(.data) }

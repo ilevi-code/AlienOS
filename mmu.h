@@ -108,5 +108,3 @@ void set_dacr(uint dacr);
 void set_ttbr1(translation_table_t* table);
 
 void set_ttbr0(translation_table_t* table);
-
-void mmu_init();
