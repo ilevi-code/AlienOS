@@ -8,12 +8,12 @@ mod mmu;
 mod panic_handler;
 
 use dtb::DeviceTreeBlob;
-use mmu::BasicTranslationTable;
+use mmu::{EntryPtr, virt_to_phys};
 
 #[no_mangle]
 pub unsafe extern "C" fn main(
     _dtb: *mut DeviceTreeBlob,
-    bootstrap_table: *mut BasicTranslationTable,
+    bootstrap_table: EntryPtr,
 ) -> ! {
     kalloc::init();
     init_mmu_fine_grained(bootstrap_table);
@@ -22,11 +22,9 @@ pub unsafe extern "C" fn main(
     panic!("kernel has reached it's end");
 }
 
-fn init_mmu_fine_grained(bootstrap_table: *mut BasicTranslationTable) {
-    let bootstrap_table = unsafe { &mut *bootstrap_table };
+fn init_mmu_fine_grained(bootstrap_table: EntryPtr) {
     let kern_location = mmu::get_kernel_location();
-    let kern_phys = bootstrap_table
-        .virt_to_phys(kern_location.start)
+    let kern_phys = virt_to_phys(bootstrap_table, kern_location.start)
         .expect("Kernel should be mapped");
     let mut builder = mmu::TranslationTableBuilder::new(bootstrap_table)
         .expect("Base MMU builder create should succeed");
