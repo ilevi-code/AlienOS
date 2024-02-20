@@ -173,13 +173,13 @@ pub enum EntryType {
 pub fn virt_to_phys(table: EntryPtr, virt: usize) -> Option<usize> {
     let parts = AddrParts::from(virt);
     let entry = unsafe { table.add(parts.l1_index).as_ref() }?;
-    let l2_table = match entry.get() {
+    let l2_table = match entry.get_type() {
         EntryType::Unmapped => return None,
         EntryType::Section => return Some(entry.as_section()),
         EntryType::SeconLevelTable => entry.as_l2_table(),
         _ => panic!("Unsupported entry type"),
     };
-    let l2_entry = &l2_table.entries[parts.l2_index];
+    let l2_entry = &l2_table[parts.l2_index];
     l2_entry.get_phys()
 }
 
@@ -195,8 +195,9 @@ pub fn replace_section(table: EntryPtr, virt: usize, phys: usize) {
 impl Entry {
     const SUPERSECTION_BIT: usize = 1 << 18;
     const SECTION_MASK: usize = 0xfff00000;
+    const L2_ENTRY_COUNT: usize = 256;
 
-    pub fn get(&self) -> EntryType {
+    pub fn get_type(&self) -> EntryType {
         match self.value & 0b11 {
             0 => EntryType::Unmapped,
             1 => EntryType::SeconLevelTable,
@@ -209,9 +210,9 @@ impl Entry {
         }
     }
 
-    fn as_l2_table(&self) -> &L2Table {
+    fn as_l2_table(&self) -> &[L2Entry] {
         assert!(self.value & 0b11 == 0b01);
-        unsafe { &*(self.value as *const L2Table) }
+        unsafe { core::slice::from_raw_parts(self.value as *const L2Entry, Self::L2_ENTRY_COUNT) }
     }
 
     fn as_section(&self) -> usize {
@@ -235,98 +236,32 @@ impl Entry {
     }
 }
 
-#[repr(C)]
-struct L2Table {
-    entries: [L2Entry; 256],
-}
-const_assert!(size_of::<L2Table>() == 1024);
 
-impl L2Table {
-    pub fn find_unmapped(&self, len: usize) -> Option<usize> {
-        let mut total = 0usize;
-        let mut offset = Some(0usize);
-        for (i, entry) in self.entries.iter().enumerate() {
-            if entry.value != 0 {
-                total = 0;
-                offset = None;
-                continue;
-            }
-
-            if offset.is_none() {
-                offset = Some(i);
-            }
-            total += SMALL_PAGE_SIZE;
-
-            if total > len {
-                return offset;
-            }
-        }
-        None
-    }
-}
-
-#[repr(C)]
-pub struct BasicTranslationTable {
-    entries: [Entry; 4096],
-}
-
-const L2_TABLES_PER_BLOCK: usize = kalloc::BLOCK_SIZE / size_of::<L2Table>();
-
-impl BasicTranslationTable {
-    // pub fn new(current_table: &mut Self) -> Option<*mut Self> {
-    //     let virt = current_table.find_unmapped(kalloc::BLOCK_SIZE)?;
-    //     let ptr = kalloc::alloc_frame();
-    //     current_table.map(ptr, virt);
-    //     let page = virt as *mut u8;
-    //     unsafe {
-    //         page.write_bytes(0, kalloc::BLOCK_SIZE);
-    //     }
-    //     let new_table = page as *mut Self;
-    //     // new_table.map(page,
-    // }
-
-    // pub fn map(&mut self, phys: usize, virt: usize) {
-    //     let entry_index = virt >> 20;
-    //     let l2_entry_index = (virt >> 12) & 0xff;
-    //     let l2_table = self.get_entry(entry_index).as_table_mut();
-    //     let l2_entry = l2_table.get_entry(l2_entry_index);
-    // }
-
-    // pub fn get_entry(&mut self, i: usize) -> &mut Entry {
-    //     self.map_entry(i);
-    //     self.get_entry_unchecked(i)
-    // }
-
-    // pub fn map_entry(&mut self, i: usize) {
-    //     if self.get_entry_unchecked(i).value == 0 {
-    //         return;
-    //     }
-    //     let ptr = kalloc::alloc_frame();
-    //     unsafe {
-    //         ptr.write_bytes(0, kalloc::BLOCK_SIZE);
-    //     }
-    //     let addr = ptr as usize;
-    //     let base_index = i % L2_TABLES_PER_BLOCK;
-    //     for j in 0..L2_TABLES_PER_BLOCK {
-    //         self.entries[base_index + j].value = (addr + (j * size_of::<L2Table>())) & 0xfffffc00;
-    //     }
-    // }
-
-    // pub fn get_entry_unchecked(&mut self, i: usize) -> &mut Entry {
-    //     let entry = &mut self.entries[i];
-    //     entry
-    // }
-
-    // pub fn find_unmapped(&self, len: usize) -> Option<usize> {
-    //     // TODO improve to look and end and start of adjacent l2 entries
+    // pub fn find_unmapped(self: &L2Table, len: usize) -> Option<usize> {
+    //     let mut total = 0usize;
+    //     let mut offset = Some(0usize);
     //     for (i, entry) in self.entries.iter().enumerate() {
-    //         if let Some(entry_index) = entry.as_table().find_unmapped(len) {
-    //             return Some((i << 20) | (entry_index << 12));
+    //         if entry.value != 0 {
+    //             total = 0;
+    //             offset = None;
+    //             continue;
+    //         }
+
+    //         if offset.is_none() {
+    //             offset = Some(i);
+    //         }
+    //         total += SMALL_PAGE_SIZE;
+
+    //         if total > len {
+    //             return offset;
     //         }
     //     }
     //     None
     // }
-}
+
+
+const L2_TABLE_SIZE: usize = Entry::L2_ENTRY_COUNT * size_of::<L2Entry>();
+const L2_TABLES_PER_BLOCK: usize = kalloc::BLOCK_SIZE / L2_TABLE_SIZE;
 
 // The slave second level table maps is filled with L2 entries, each cappable of mapping a
 // small-page.
@@ -341,11 +276,14 @@ pub struct TranslationTable {
 }
 
 impl TranslationTable {
+    pub const L1_ENTRY_COUNT: usize = 4096;
+    pub const SLAVE_ENTRY_COUNT: usize = 4096;
+
     /// The translateion table must be in use
     pub fn map_page(&mut self, phys: usize, virt: usize) {
         let parts = AddrParts::from(virt);
         let l2 = self.get_l2_table(&parts); // address accessible by us to edit the table
-        let l2_entry = &mut l2.entries[parts.l2_index];
+        let l2_entry = &mut l2[parts.l2_index];
         l2_entry.set_phys(phys, L2EntryType::Small);
     }
 
@@ -355,7 +293,7 @@ impl TranslationTable {
     /// It's physicall address is and asssociates in the first level table.
     /// It's physicall address is also mapped in the slave table, it's content
     /// can we written and read.
-    fn get_l2_table(&mut self, addr_parts: &AddrParts) -> &mut L2Table {
+    fn get_l2_table(&mut self, addr_parts: &AddrParts) -> &mut [L2Entry] {
         let index_in_slave = addr_parts.index_in_slave();
 
         if !self.does_l2_exist(addr_parts) {
@@ -369,7 +307,7 @@ impl TranslationTable {
     }
 
     fn does_l2_exist(&mut self, addr_parts: &AddrParts) -> bool {
-        self.get_l1_table().entries[addr_parts.l1_index].value != 0
+        self.get_l1_table()[addr_parts.l1_index].value != 0
     }
 
     /// Associate the physicall address of the table to the first level table.
@@ -377,8 +315,8 @@ impl TranslationTable {
         let base_index = l1_index % L2_TABLES_PER_BLOCK;
         let l1_table = self.get_l1_table();
         for j in 0..L2_TABLES_PER_BLOCK {
-            l1_table.entries[base_index + j].value =
-                (frame + (j * size_of::<L2Table>())) & 0xfffffc00;
+            l1_table[base_index + j].value =
+                (frame + (j * L2_TABLE_SIZE)) & 0xfffffc00;
         }
     }
 
@@ -386,35 +324,33 @@ impl TranslationTable {
     fn map_frame_to_slave_table(&self, frame: usize, index_in_slave: usize) {
         let slave_table = self.get_slave_table();
         for j in 0..L2_TABLES_PER_BLOCK {
-            slave_table.entries[index_in_slave + j]
-                .set_phys(frame + (j * size_of::<L2Table>()), L2EntryType::Small);
+            slave_table[index_in_slave + j]
+                .set_phys(frame + (j * L2_TABLE_SIZE), L2EntryType::Small);
         }
     }
 
-    fn get_l2_table_unchecked(&self, table_index: usize) -> &mut L2Table {
+    fn get_l2_table_unchecked(&self, table_index: usize) -> &mut [L2Entry] {
         let table_base = self.range.end - (SECTION_SIZE * 2) - MAPPABLE_L2_TABLES_SIZE;
-        let base_ptr = table_base as *mut L2Table;
-        unsafe { &mut *(base_ptr.add(table_index)) }
+        let table_ptr = table_base + (table_index * L2_TABLE_SIZE);
+        unsafe { core::slice::from_raw_parts_mut(table_ptr as *mut L2Entry, Entry::L2_ENTRY_COUNT) }
     }
 
-    fn get_slave_table(&self) -> &mut L2Table {
+    fn get_slave_table(&self) -> &mut [L2Entry] {
         let table_addr = self.range.end - (SECTION_SIZE * 2);
-        let table_ptr = table_addr as *mut L2Table;
-        unsafe { table_ptr.as_mut().unwrap() }
+        unsafe { core::slice::from_raw_parts_mut(table_addr as *mut L2Entry, TranslationTable::SLAVE_ENTRY_COUNT) }
     }
 
-    pub fn get_l1_table(&self) -> &mut BasicTranslationTable {
+    pub fn get_l1_table(&self) -> &mut [Entry] {
         let l1_addr = self.range.end - SECTION_SIZE;
-        let l1_ptr = l1_addr as *mut BasicTranslationTable;
-        unsafe { l1_ptr.as_mut().unwrap() }
+        unsafe { core::slice::from_raw_parts_mut(l1_addr as *mut Entry, TranslationTable::L1_ENTRY_COUNT) }
     }
 }
 
 pub struct TranslationTableBuilder<'a> {
-    current_table: EntryPtr,
-    new_table: &'a mut BasicTranslationTable,
+    current_table: &'a mut [Entry],
+    new_table: &'a mut [Entry],
     table_phys: usize,
-    slave_table: &'a mut L2Table,
+    slave_table: &'a mut [L2Entry],
     slave_phys: usize,
 }
 
@@ -428,8 +364,9 @@ impl<'a> TranslationTableBuilder<'a> {
         replace_section(current_table, Self::KERN_L1_TABLE_ADDR, table_phys);
         replace_section(current_table, Self::KERN_SLAVE_TABLE_ADDR, slave_phys);
 
-        let new_table = unsafe { &mut *(Self::KERN_L1_TABLE_ADDR as *mut BasicTranslationTable) };
-        let slave_table = unsafe { &mut *(Self::KERN_SLAVE_TABLE_ADDR as *mut L2Table) };
+        let current_table = unsafe { core::slice::from_raw_parts_mut(current_table, TranslationTable::L1_ENTRY_COUNT) };
+        let new_table = unsafe { core::slice::from_raw_parts_mut(Self::KERN_L1_TABLE_ADDR as *mut Entry, TranslationTable::L1_ENTRY_COUNT) };
+        let slave_table = unsafe { core::slice::from_raw_parts_mut(Self::KERN_SLAVE_TABLE_ADDR as *mut L2Entry, TranslationTable::SLAVE_ENTRY_COUNT) };
         Some(Self {
             current_table,
             new_table,
