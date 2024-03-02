@@ -377,7 +377,15 @@ impl<'a> TranslationTableBuilder<'a> {
     }
 
     pub fn prepare_map(&mut self, virt: usize, phys: usize, len: usize) {
-        let parts = AddrParts::from(virt);
+        let addr_parts = AddrParts::from(virt);
+        let index_in_slave = addr_parts.index_in_slave();
+
+        if !self.does_l2_exist(addr_parts) {
+            let frame_phys_addr = kalloc::alloc_frame();
+            self.map_frame_to_l1_table(frame_phys_addr, addr_parts.l1_index);
+
+            self.map_frame_to_slave_table(frame_phys_addr, index_in_slave);
+        }
         todo!();
     }
 
