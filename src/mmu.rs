@@ -1,4 +1,6 @@
+use crate::console::println;
 use crate::kalloc;
+use crate::step_range::StepRange;
 use core::mem::size_of;
 use static_assertions::const_assert;
 
@@ -20,7 +22,13 @@ fn div_ceil(left: usize, other: usize) -> usize {
     (left + other - 1) / other
 }
 
-enum MapError {
+fn align_down(val: usize, align: usize) -> usize {
+    let mask = align - 1;
+    val & (!mask)
+}
+
+#[derive(Debug)]
+pub enum MapError {
     Remap,
 }
 
@@ -86,24 +94,20 @@ impl From<usize> for AddrParts {
     }
 }
 
-impl AddrParts {
-    fn index_in_slave(&self) -> usize {
-        (self.l1_index << 8 | self.l2_index) / SMALL_PAGE_SIZE
-    }
-}
-
 #[repr(C)]
 struct L2Entry {
     value: usize,
 }
 
+#[derive(Clone, Copy)]
 pub enum PagePerm {
-    KernNone,
-    UserNone,
+    NoOne,
+    KernOnly,
     UserRo,
     UserRw,
 }
 
+#[derive(PartialEq, Eq)]
 enum L2EntryType {
     Unmapped,
     Small,
@@ -113,8 +117,8 @@ enum L2EntryType {
 #[inline]
 fn translate_perm(perm: PagePerm) -> usize {
     match perm {
-        PagePerm::KernNone => 0,
-        PagePerm::UserNone => 1,
+        PagePerm::NoOne => 0,
+        PagePerm::KernOnly => 1,
         PagePerm::UserRo => 2,
         PagePerm::UserRw => 3,
     }
@@ -167,7 +171,13 @@ pub enum EntryType {
     Unmapped,
     SeconLevelTable,
     Section,
-    SuperSection
+    SuperSection,
+}
+
+fn phys_to_virt<T>(addr: usize) -> *const T {
+    const PHYS_START_IN_KERN_VIRT: usize = 0x80000000;
+    const PHYS_START: usize = 0x40000000;
+    (addr - PHYS_START + PHYS_START_IN_KERN_VIRT) as *const T
 }
 
 pub fn virt_to_phys(table: EntryPtr, virt: usize) -> Option<usize> {
@@ -180,7 +190,7 @@ pub fn virt_to_phys(table: EntryPtr, virt: usize) -> Option<usize> {
         _ => panic!("Unsupported entry type"),
     };
     let l2_entry = &l2_table[parts.l2_index];
-    l2_entry.get_phys()
+    l2_entry.get_phys().map(|addr| addr + parts.page_offset)
 }
 
 pub fn replace_section(table: EntryPtr, virt: usize, phys: usize) {
@@ -189,30 +199,52 @@ pub fn replace_section(table: EntryPtr, virt: usize, phys: usize) {
     // TODO free_frame if this is a second level table
     entry.unmap();
 
-    entry.set_section(phys, PagePerm::UserNone);
+    entry.set_section(phys, PagePerm::KernOnly, 0);
 }
 
 impl Entry {
     const SUPERSECTION_BIT: usize = 1 << 18;
     const SECTION_MASK: usize = 0xfff00000;
+    const L2_TABLE_MASK: usize = 0xfffffc00;
     const L2_ENTRY_COUNT: usize = 256;
+
+    const IGNORED_ENTRY_MAGIC: usize = 0b00;
+    const SECOND_LEVEL_TABLE_MAGIC: usize = 0b01;
+    const SECTION_MAGIC: usize = 0b10;
 
     pub fn get_type(&self) -> EntryType {
         match self.value & 0b11 {
-            0 => EntryType::Unmapped,
-            1 => EntryType::SeconLevelTable,
-            2 => if self.is_supersection() {
-                EntryType::SuperSection
-            } else {
-                EntryType::Section
-            },
-            _ => panic!("Unsupported entry type")
+            Self::IGNORED_ENTRY_MAGIC => EntryType::Unmapped,
+            Self::SECOND_LEVEL_TABLE_MAGIC => EntryType::SeconLevelTable,
+            Self::SECTION_MAGIC => {
+                if self.is_supersection() {
+                    EntryType::SuperSection
+                } else {
+                    EntryType::Section
+                }
+            }
+            _ => panic!("Unsupported entry type"),
         }
     }
 
     fn as_l2_table(&self) -> &[L2Entry] {
-        assert!(self.value & 0b11 == 0b01);
-        unsafe { core::slice::from_raw_parts(self.value as *const L2Entry, Self::L2_ENTRY_COUNT) }
+        assert!(self.value & 0b11 == Self::SECOND_LEVEL_TABLE_MAGIC);
+        unsafe {
+            core::slice::from_raw_parts(phys_to_virt::<L2Entry>(self.value), Self::L2_ENTRY_COUNT)
+        }
+    }
+
+    fn as_l2_table_mut(&self) -> Option<&mut [L2Entry]> {
+        if self.value & 0b11 != Self::SECOND_LEVEL_TABLE_MAGIC {
+            None
+        } else {
+            Some(unsafe {
+                core::slice::from_raw_parts_mut(
+                    phys_to_virt::<L2Entry>(self.value).cast_mut(),
+                    Self::L2_ENTRY_COUNT,
+                )
+            })
+        }
     }
 
     fn as_section(&self) -> usize {
@@ -223,8 +255,17 @@ impl Entry {
         self.value & 0x3 != 0
     }
 
-    fn set_section(&mut self, phys: usize, perm: PagePerm) {
-        self.value = (phys & Self::SECTION_MASK) | translate_perm(perm);
+    fn set_section(&mut self, phys: usize, perm: PagePerm, domain: u8) {
+        self.value = (phys & Self::SECTION_MASK)
+            | (translate_perm(perm) << 10)
+            | ((domain as usize) << 5)
+            | (Self::SECTION_MAGIC);
+    }
+
+    fn set_l2_table(&mut self, phys: usize, domain: u8) {
+        self.value = (phys & Self::L2_TABLE_MASK)
+            | ((domain as usize) << 5)
+            | Self::SECOND_LEVEL_TABLE_MAGIC;
     }
 
     fn unmap(&mut self) {
@@ -236,29 +277,31 @@ impl Entry {
     }
 }
 
+// pub fn find_unmapped(self: &L2Table, len: usize) -> Option<usize> {
+//     let mut total = 0usize;
+//     let mut offset = Some(0usize);
+//     for (i, entry) in self.entries.iter().enumerate() {
+//         if entry.value != 0 {
+//             total = 0;
+//             offset = None;
+//             continue;
+//         }
 
-    // pub fn find_unmapped(self: &L2Table, len: usize) -> Option<usize> {
-    //     let mut total = 0usize;
-    //     let mut offset = Some(0usize);
-    //     for (i, entry) in self.entries.iter().enumerate() {
-    //         if entry.value != 0 {
-    //             total = 0;
-    //             offset = None;
-    //             continue;
-    //         }
+//         if offset.is_none() {
+//             offset = Some(i);
+//         }
+//         total += SMALL_PAGE_SIZE;
 
-    //         if offset.is_none() {
-    //             offset = Some(i);
-    //         }
-    //         total += SMALL_PAGE_SIZE;
+//         if total > len {
+//             return offset;
+//         }
+//     }
+//     None
+// }
 
-    //         if total > len {
-    //             return offset;
-    //         }
-    //     }
-    //     None
-    // }
-
+const L1_ENTRY_COUNT: usize = 4096;
+const L1_TABLE_SIZE: usize = L1_ENTRY_COUNT * size_of::<Entry>();
+const L1_TABLES_PER_BLOCK: usize = kalloc::BLOCK_SIZE / L1_TABLE_SIZE;
 
 const L2_TABLE_SIZE: usize = Entry::L2_ENTRY_COUNT * size_of::<L2Entry>();
 const L2_TABLES_PER_BLOCK: usize = kalloc::BLOCK_SIZE / L2_TABLE_SIZE;
@@ -275,118 +318,93 @@ pub struct TranslationTable {
     range: core::ops::Range<usize>,
 }
 
-impl TranslationTable {
-    pub const L1_ENTRY_COUNT: usize = 4096;
-    pub const SLAVE_ENTRY_COUNT: usize = 4096;
+struct TranslateTableIterator<'a> {
+    addr: AddrParts,
+    entreis: &'a mut [Entry],
+}
 
-    /// The translateion table must be in use
-    pub fn map_page(&mut self, phys: usize, virt: usize) {
-        let parts = AddrParts::from(virt);
-        let l2 = self.get_l2_table(&parts); // address accessible by us to edit the table
-        let l2_entry = &mut l2[parts.l2_index];
-        l2_entry.set_phys(phys, L2EntryType::Small);
-    }
+impl<'a> Iterator for TranslateTableIterator<'a> {
+    type Item = &'a mut L2Entry;
 
-    /// Get the Second level table associated with a virtual address.
-    ///
-    /// If the table is not mapped, a new table allocated.
-    /// It's physicall address is and asssociates in the first level table.
-    /// It's physicall address is also mapped in the slave table, it's content
-    /// can we written and read.
-    fn get_l2_table(&mut self, addr_parts: &AddrParts) -> &mut [L2Entry] {
-        let index_in_slave = addr_parts.index_in_slave();
-
-        if !self.does_l2_exist(addr_parts) {
-            let frame_phys_addr = kalloc::alloc_frame();
-            self.map_frame_to_l1_table(frame_phys_addr, addr_parts.l1_index);
-
-            self.map_frame_to_slave_table(frame_phys_addr, index_in_slave);
-        }
-
-        self.get_l2_table_unchecked(index_in_slave)
-    }
-
-    fn does_l2_exist(&mut self, addr_parts: &AddrParts) -> bool {
-        self.get_l1_table()[addr_parts.l1_index].value != 0
-    }
-
-    /// Associate the physicall address of the table to the first level table.
-    fn map_frame_to_l1_table(&self, frame: usize, l1_index: usize) {
-        let base_index = l1_index % L2_TABLES_PER_BLOCK;
-        let l1_table = self.get_l1_table();
-        for j in 0..L2_TABLES_PER_BLOCK {
-            l1_table[base_index + j].value =
-                (frame + (j * L2_TABLE_SIZE)) & 0xfffffc00;
-        }
-    }
-
-    /// Associate the block with some virtual address in the area controlled by the slave table
-    fn map_frame_to_slave_table(&self, frame: usize, index_in_slave: usize) {
-        let slave_table = self.get_slave_table();
-        for j in 0..L2_TABLES_PER_BLOCK {
-            slave_table[index_in_slave + j]
-                .set_phys(frame + (j * L2_TABLE_SIZE), L2EntryType::Small);
-        }
-    }
-
-    fn get_l2_table_unchecked(&self, table_index: usize) -> &mut [L2Entry] {
-        let table_base = self.range.end - (SECTION_SIZE * 2) - MAPPABLE_L2_TABLES_SIZE;
-        let table_ptr = table_base + (table_index * L2_TABLE_SIZE);
-        unsafe { core::slice::from_raw_parts_mut(table_ptr as *mut L2Entry, Entry::L2_ENTRY_COUNT) }
-    }
-
-    fn get_slave_table(&self) -> &mut [L2Entry] {
-        let table_addr = self.range.end - (SECTION_SIZE * 2);
-        unsafe { core::slice::from_raw_parts_mut(table_addr as *mut L2Entry, TranslationTable::SLAVE_ENTRY_COUNT) }
-    }
-
-    pub fn get_l1_table(&self) -> &mut [Entry] {
-        let l1_addr = self.range.end - SECTION_SIZE;
-        unsafe { core::slice::from_raw_parts_mut(l1_addr as *mut Entry, TranslationTable::L1_ENTRY_COUNT) }
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
     }
 }
 
 pub struct TranslationTableBuilder<'a> {
-    current_table: &'a mut [Entry],
-    new_table: &'a mut [Entry],
-    table_phys: usize,
-    slave_table: &'a mut [L2Entry],
-    slave_phys: usize,
+    table: &'a mut [Entry],
 }
 
 impl<'a> TranslationTableBuilder<'a> {
-    const KERN_L1_TABLE_ADDR: usize = 0xfff00000;
-    const KERN_SLAVE_TABLE_ADDR: usize = Self::KERN_L1_TABLE_ADDR - SECTION_SIZE;
-
-    pub fn new(current_table: EntryPtr) -> Option<Self> {
+    pub fn new() -> Option<Self> {
         let table_phys = kalloc::alloc_frame();
-        let slave_phys = kalloc::alloc_frame();
-        replace_section(current_table, Self::KERN_L1_TABLE_ADDR, table_phys);
-        replace_section(current_table, Self::KERN_SLAVE_TABLE_ADDR, slave_phys);
 
-        let current_table = unsafe { core::slice::from_raw_parts_mut(current_table, TranslationTable::L1_ENTRY_COUNT) };
-        let new_table = unsafe { core::slice::from_raw_parts_mut(Self::KERN_L1_TABLE_ADDR as *mut Entry, TranslationTable::L1_ENTRY_COUNT) };
-        let slave_table = unsafe { core::slice::from_raw_parts_mut(Self::KERN_SLAVE_TABLE_ADDR as *mut L2Entry, TranslationTable::SLAVE_ENTRY_COUNT) };
-        Some(Self {
-            current_table,
-            new_table,
-            table_phys,
-            slave_table,
-            slave_phys,
-        })
+        let table =
+            unsafe { core::slice::from_raw_parts_mut(table_phys as *mut Entry, L1_ENTRY_COUNT) };
+        Some(Self { table })
     }
 
-    pub fn prepare_map(&mut self, virt: usize, phys: usize, len: usize) {
-        let addr_parts = AddrParts::from(virt);
-        let index_in_slave = addr_parts.index_in_slave();
+    pub fn map(&mut self, virt: usize, phys: usize, len: usize, perm: PagePerm) -> Result<()> {
+        let virt_range = StepRange::new(virt, virt + len, SMALL_PAGE_SIZE);
+        let phys_range = StepRange::new(phys, phys + len, SMALL_PAGE_SIZE);
 
-        if !self.does_l2_exist(addr_parts) {
-            let frame_phys_addr = kalloc::alloc_frame();
-            self.map_frame_to_l1_table(frame_phys_addr, addr_parts.l1_index);
-
-            self.map_frame_to_slave_table(frame_phys_addr, index_in_slave);
+        for (virt, phys) in virt_range.zip(phys_range) {
+            let addr = AddrParts::from(virt);
+            self.map_once(&addr, phys, perm)?;
+            // use crate::console;
+            // console::write("done");
         }
-        todo!();
+        Ok(())
+    }
+
+    fn map_once(&mut self, addr: &AddrParts, phys: usize, perm: PagePerm) -> Result<()> {
+        let entry = self.get_l1(addr.l1_index);
+
+        let l2_table = if let Some(l2_table) = entry.as_l2_table_mut() {
+            l2_table
+        } else {
+            self.map_l2_at(addr.l1_index)?
+                .as_l2_table_mut()
+                .expect("Entry should contains L2 table after mapping")
+        };
+
+        if l2_table[addr.l2_index].get_type() != L2EntryType::Unmapped {
+            return Err(MapError::Remap);
+        }
+
+        l2_table[addr.l2_index].set_phys(phys, L2EntryType::Small);
+        l2_table[addr.l2_index].set_perm(perm);
+        Ok(())
+    }
+
+    fn get_l1(&mut self, l1_index: usize) -> &mut Entry {
+        &mut self.table[l1_index]
+    }
+
+    /// Makes sure that the second level table at `l1_index` is mapped and accessible.
+    fn map_l2_at(&mut self, l1_index: usize) -> Result<&mut Entry> {
+        let frame = kalloc::alloc_frame();
+        let base_index = align_down(l1_index, L2_TABLES_PER_BLOCK);
+
+        for (i, entry) in self.table[base_index..base_index + L2_TABLES_PER_BLOCK]
+            .iter_mut()
+            .enumerate()
+        {
+            if entry.is_mapped() {
+                return Err(MapError::Remap);
+            }
+            entry.set_l2_table(frame + (i * L2_TABLE_SIZE), 0);
+        }
+        Ok(&mut self.table[l1_index])
+    }
+
+    fn old_map_l2(l2_table: &mut [L2Entry], l2_index: usize, perm: PagePerm) {
+        let frame = kalloc::alloc_frame();
+        let base_index = l2_index % L2_TABLES_PER_BLOCK;
+        for j in 0..L2_TABLES_PER_BLOCK {
+            l2_table[base_index + j].set_phys(frame + (j * L2_TABLE_SIZE), L2EntryType::Small);
+            l2_table[base_index + j].set_perm(perm);
+        }
     }
 
     pub fn apply(self) -> TranslationTable {

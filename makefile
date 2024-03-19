@@ -24,8 +24,11 @@ boot.elf: boot.o bootstrap_mmu.o mmu.o
 clean:
 	$(RM)  *.bin *.elf *.o
 
+debug: QEMU_DEBUG_FLAGS=-S -s
+debug: qemu
+
 qemu: kernel.bin | fs.img
-	qemu-system-arm -m 512M -M virt -S -s -nographic -kernel kernel.bin \
+	qemu-system-arm -m 512M -M virt $(QEMU_DEBUG_FLAGS) -nographic -kernel kernel.bin \
 		-global virtio-mmio.force-legacy=false \
 		-drive file=fs.img,format=raw,if=none,id=hd0 \
 		-device virtio-blk-device,drive=hd0 \

@@ -8,8 +8,8 @@ extern translation_table_t bootstrap_table;
 void map_sections(translation_table_t* table, uint32_t va, uint32_t pa, uint32_t size, uint32_t flags)
 {
     int table_index = va / SECTION_SIZE;
-    int end_index = CEIL_DIV(size, SECTION_SIZE);
-    for (int i = 0; i < end_index; i++, table_index++) {
+    int section_count = CEIL_DIV(size, SECTION_SIZE);
+    for (int i = 0; i < section_count; i++, table_index++) {
         table->entries[table_index] = (pa + (SECTION_SIZE * i)) | TT_ENTRY_SECTION | flags;
     }
 }
@@ -35,10 +35,15 @@ translation_table_t* mmu_init()
         bootstrap_table.entries[i] = 0;
     }
 
-    // TOOD remove this and add this in mapping in kernel_entry
+    // Map MMIO
     map_sections(&bootstrap_table, 0, 0, 0x40000000, SECTION_AP(PERM_NONE) | TT_ENTRY_B);
+
     // Use 1:1 mapping for the the bootstrap code
     map_sections(&bootstrap_table, start, start, bootstrap_size, SECTION_AP(PERM_NONE));
+
+    // Map 1 GB of phys memory
+    map_sections(&bootstrap_table, 0x80000000, 0x40000000, 0x40000000, SECTION_AP(PERM_NONE));
+
     // Map the kernel to the higher 1GB
     map_sections(&bootstrap_table, 0xc0000000, 0x40000000, 0x40000000, SECTION_AP(PERM_NONE));
 
