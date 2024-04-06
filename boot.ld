@@ -14,7 +14,7 @@ SECTIONS
  } = 0
  __end = .;
  .asserts : {
-     ASSERT (__end == 0x40018000, "Bad end address of boot image");
+     ASSERT (__end == 0x40018000, "Bad end address of boot image, will mismatch kernel.ld");
  }
  /* Since we map ourselves to the higher 1GB of the RAM, we
   * need to jump to the correct address */
