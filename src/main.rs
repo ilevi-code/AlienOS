@@ -11,9 +11,19 @@ mod step_range;
 use dtb::DeviceTreeBlob;
 use mmu::{virt_to_phys, EntryPtr, PagePerm};
 
+// actually is 0x4000_0000, but it is mapped by the bootstrap mmu.
+// also, TODO parse from DTB
+const RAM_START: usize = 0xc000_0000;
+const RAM_SIZE: usize = 0x2000_0000;
+const KERN_LINK: usize = 0xc000_0000;
+
 #[no_mangle]
 pub unsafe extern "C" fn main(_dtb: *mut DeviceTreeBlob, bootstrap_table: EntryPtr) -> ! {
-    kalloc::init();
+    kalloc::init(
+        RAM_START + (mmu::get_kernel_location().end - KERN_LINK),
+        RAM_START + RAM_SIZE,
+    );
+
     init_mmu_fine_grained(bootstrap_table);
     // let translate_table = TranslationTable::new(unsafe { &mut (*bootstrap_table) as &mut TranslationTable});
     console::write("hello\n");
