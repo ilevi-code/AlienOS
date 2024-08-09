@@ -1,6 +1,7 @@
 use crate::console::println;
 use crate::kalloc;
 use crate::step_range::StepRange;
+use core::arch::asm;
 use core::mem::size_of;
 use static_assertions::const_assert;
 
@@ -34,46 +35,6 @@ pub enum MapError {
 
 type Result<T> = core::result::Result<T, MapError>;
 
-/// Upon boot the end of the kernel should be mapped in 1:1 mode, to allow creation of new
-/// translation tables.
-///
-/// When creating new translation tables, calls to kalloc may (and probably will) return a non-mapped 16KB region. To
-/// So we must assure the pages are indeed writable.
-/// To this we do the following:
-///
-/// 1. A section entry that maps access to the First layer translation table.
-///    We do not use the whole 1MB of the section, it just convienient.
-///    Section do not require an accessible page
-///    Base address: 0x7ff00000 (last 1MB of the table)
-/// 2. Another section that is used for a Second layer table.
-///    This table isn't used for only for mapping othe second layer table's frame, so can be
-///    written by us.
-///    Base address: 0x7fe00000 (second to last 1MB of the table)
-///    The mapped block is 16KB of memory, allowing mapping 4096 entries of 4K each.
-///    This is 16MB of memory acessible by us.
-/// 3. Assuming the whole 16MB are also not used by the user - but by us for acessing even more
-///    second layer tables. That's 4M second level entries, each one capable of mapping 4k.
-///    That's 16GB of memory. We'll be fine from here on.
-///    Size actually needed for memory of user-land:
-///    (2Gb of memory) / (1M mappable size entry) = 2M
-///
-/// Behold:
-//               +--> +-----------------------+
-//               |    |      First table      |              0x80000000 - 0x7ff00000
-//               |    |    virtual adddres    |         (1MB sectioon, first 16K are valid)
-//               +--> +-----------------------+
-// +---------+   |    |     Slave tables      |              0x7ff00000 - 0x7fe00000
-// |         |   |    |    Maps next 16MB     |        (1MB sectioon, first 16K are valid)
-// |  First  +---+    +-----------------------+
-// |  Level  |   |    | Second level table's  |              0x7fe00000 - 0x7ee00000
-// |  Table  |   +--> |  virtual addresses    |  (16MB, 4K granular, Controlled by the slave tables)
-// |         |        +-----------------------+
-// +---------+---+
-//               +--> +-----------------------+
-//                    |  User land mappings   |              0x7ee00000 - 0x0
-//                    |         ...           |
-//                    +-----------------------+
-
 pub const SMALL_PAGE_SIZE: usize = 4096;
 const SECTION_SIZE: usize = 1024 * 1024;
 const USER_END: usize = 0x80000000;
@@ -82,6 +43,12 @@ struct AddrParts {
     l1_index: usize,
     l2_index: usize,
     page_offset: usize,
+}
+
+impl AddrParts {
+    fn section_offset(&self) -> usize {
+        (self.l2_index << 12) + self.page_offset
+    }
 }
 
 impl From<usize> for AddrParts {
@@ -174,25 +141,6 @@ pub enum EntryType {
     SuperSection,
 }
 
-fn phys_to_virt<T>(addr: usize) -> *const T {
-    const PHYS_START_IN_KERN_VIRT: usize = 0x80000000;
-    const PHYS_START: usize = 0x40000000;
-    (addr - PHYS_START + PHYS_START_IN_KERN_VIRT) as *const T
-}
-
-pub fn virt_to_phys(table: EntryPtr, virt: usize) -> Option<usize> {
-    let parts = AddrParts::from(virt);
-    let entry = unsafe { table.add(parts.l1_index).as_ref() }?;
-    let l2_table = match entry.get_type() {
-        EntryType::Unmapped => return None,
-        EntryType::Section => return Some(entry.as_section()),
-        EntryType::SeconLevelTable => entry.as_l2_table(),
-        _ => panic!("Unsupported entry type"),
-    };
-    let l2_entry = &l2_table[parts.l2_index];
-    l2_entry.get_phys().map(|addr| addr + parts.page_offset)
-}
-
 pub fn replace_section(table: EntryPtr, virt: usize, phys: usize) {
     let parts = AddrParts::from(virt);
     let entry = unsafe { table.add(parts.l1_index).as_mut().unwrap() };
@@ -229,9 +177,7 @@ impl Entry {
 
     fn as_l2_table(&self) -> &[L2Entry] {
         assert!(self.value & 0b11 == Self::SECOND_LEVEL_TABLE_MAGIC);
-        unsafe {
-            core::slice::from_raw_parts(phys_to_virt::<L2Entry>(self.value), Self::L2_ENTRY_COUNT)
-        }
+        unsafe { core::slice::from_raw_parts(self.value as *const L2Entry, Self::L2_ENTRY_COUNT) }
     }
 
     fn as_l2_table_mut(&self) -> Option<&mut [L2Entry]> {
@@ -240,7 +186,7 @@ impl Entry {
         } else {
             Some(unsafe {
                 core::slice::from_raw_parts_mut(
-                    phys_to_virt::<L2Entry>(self.value).cast_mut(),
+                    (self.value as *const L2Entry).cast_mut(),
                     Self::L2_ENTRY_COUNT,
                 )
             })
@@ -313,26 +259,41 @@ const MAPPABLE_L2_TABLES_SIZE: usize =
 const_assert!(size_of::<L2Entry>() == 4);
 const_assert!(MAPPABLE_L2_TABLES_SIZE == 16 * 1024 * 1024);
 
-pub struct TranslationTable {
-    table_phys: usize,
-    range: core::ops::Range<usize>,
-}
-
-struct TranslateTableIterator<'a> {
-    addr: AddrParts,
-    entreis: &'a mut [Entry],
-}
-
-impl<'a> Iterator for TranslateTableIterator<'a> {
-    type Item = &'a mut L2Entry;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
+pub struct TranslationTable<'a> {
+    table: &'a mut [Entry],
 }
 
 pub struct TranslationTableBuilder<'a> {
     table: &'a mut [Entry],
+}
+
+impl<'a> TranslationTable<'a> {
+    pub fn from_base(base: usize) -> Self {
+        Self {
+            table: unsafe { core::slice::from_raw_parts_mut(base as *mut Entry, L1_ENTRY_COUNT) },
+        }
+    }
+
+    pub fn virt_to_phys(self, virt: usize) -> Option<usize> {
+        let parts = AddrParts::from(virt);
+        let entry = &self.table[parts.l1_index];
+        let l2_table = match entry.get_type() {
+            EntryType::Unmapped => return None,
+            EntryType::Section => return Some(entry.as_section() + parts.section_offset()),
+            EntryType::SeconLevelTable => entry.as_l2_table(),
+            _ => panic!("Unsupported entry type"),
+        };
+        let l2_entry = &l2_table[parts.l2_index];
+        l2_entry.get_phys().map(|addr| addr + parts.page_offset)
+    }
+}
+
+pub fn get_ttbr0() -> usize {
+    let table;
+    unsafe {
+        asm!("MRC p15, 0, {table}, c2, c0, 0", table = out(reg) table);
+    }
+    table
 }
 
 impl<'a> TranslationTableBuilder<'a> {
@@ -348,11 +309,14 @@ impl<'a> TranslationTableBuilder<'a> {
         let virt_range = StepRange::new(virt, virt + len, SMALL_PAGE_SIZE);
         let phys_range = StepRange::new(phys, phys + len, SMALL_PAGE_SIZE);
 
+        println!(
+            "mapping virt 0x{:x}[0..0x{:x}] to phys 0x{:x}",
+            virt, len, phys
+        );
+
         for (virt, phys) in virt_range.zip(phys_range) {
             let addr = AddrParts::from(virt);
             self.map_once(&addr, phys, perm)?;
-            // use crate::console;
-            // console::write("done");
         }
         Ok(())
     }
@@ -398,16 +362,10 @@ impl<'a> TranslationTableBuilder<'a> {
         Ok(&mut self.table[l1_index])
     }
 
-    fn old_map_l2(l2_table: &mut [L2Entry], l2_index: usize, perm: PagePerm) {
-        let frame = kalloc::alloc_frame();
-        let base_index = l2_index % L2_TABLES_PER_BLOCK;
-        for j in 0..L2_TABLES_PER_BLOCK {
-            l2_table[base_index + j].set_phys(frame + (j * L2_TABLE_SIZE), L2EntryType::Small);
-            l2_table[base_index + j].set_perm(perm);
+    pub fn apply(self) {
+        unsafe {
+            let table = self.table.as_ptr();
+            asm!("MCR p15, 0, {table}, c2, c0, 0", table = in(reg) table);
         }
-    }
-
-    pub fn apply(self) -> TranslationTable {
-        todo!();
     }
 }
