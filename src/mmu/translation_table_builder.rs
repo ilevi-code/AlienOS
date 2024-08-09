@@ -3,10 +3,9 @@ use crate::kalloc;
 use crate::step_range::StepRange;
 use core::arch::asm;
 use core::mem::size_of;
-use static_assertions::const_assert;
 
 use crate::mmu::addr_parts::AddrParts;
-use crate::mmu::entry::{Entry, EntryKind};
+use crate::mmu::entry::{Entry, EntryKind, SeconLevelTable};
 use crate::mmu::error::{MapError, Result};
 use crate::mmu::l2entry::{L2Entry, L2EntryType};
 use crate::mmu::PagePerm;
@@ -56,19 +55,6 @@ const USER_END: usize = 0x80000000;
 //     None
 // }
 
-const L1_ENTRY_COUNT: usize = 4096;
-const L1_TABLE_SIZE: usize = L1_ENTRY_COUNT * size_of::<Entry>();
-const L1_TABLES_PER_BLOCK: usize = kalloc::BLOCK_SIZE / L1_TABLE_SIZE;
-
-const L2_TABLE_SIZE: usize = Entry::L2_ENTRY_COUNT * size_of::<L2Entry>();
-const L2_TABLES_PER_BLOCK: usize = kalloc::BLOCK_SIZE / L2_TABLE_SIZE;
-
-// The slave second level table maps is filled with L2 entries, each cappable of mapping a
-// small-page.
-const MAPPABLE_L2_TABLES_SIZE: usize =
-    (kalloc::BLOCK_SIZE / size_of::<L2Entry>()) * SMALL_PAGE_SIZE;
-const_assert!(MAPPABLE_L2_TABLES_SIZE == 16 * 1024 * 1024);
-
 pub struct TranslationTableBuilder<'a> {
     table: &'a mut [Entry],
 }
@@ -82,11 +68,17 @@ pub fn get_ttbr0() -> usize {
 }
 
 impl<'a> TranslationTableBuilder<'a> {
+    const L1_ENTRY_COUNT: usize = 4096;
+
     pub fn new() -> Option<Self> {
         let table_phys = kalloc::alloc_frame();
 
-        let table =
-            unsafe { core::slice::from_raw_parts_mut(table_phys as *mut Entry, L1_ENTRY_COUNT) };
+        let table = unsafe {
+            core::slice::from_raw_parts_mut(
+                table_phys as *mut Entry,
+                TranslationTableBuilder::L1_ENTRY_COUNT,
+            )
+        };
         Some(Self { table })
     }
 
@@ -131,6 +123,9 @@ impl<'a> TranslationTableBuilder<'a> {
     /// Makes sure that the second level table at `l1_index` is mapped and accessible.
     fn create_l2table(&mut self, l1_index: usize) -> Result<&mut [L2Entry]> {
         let frame = kalloc::alloc_frame();
+        // Since a frame returned by calloc is bigger than a single second layer table, we use the
+        // new block to map the several tables surrounding the table needed.
+        const L2_TABLES_PER_BLOCK: usize = kalloc::BLOCK_SIZE / size_of::<SeconLevelTable>();
         let base_index = align_down(l1_index, L2_TABLES_PER_BLOCK);
 
         for (i, entry) in self.table[base_index..base_index + L2_TABLES_PER_BLOCK]
@@ -141,7 +136,7 @@ impl<'a> TranslationTableBuilder<'a> {
                 EntryKind::Unmapped => (),
                 _ => return Err(MapError::Remap),
             };
-            entry.set_l2_table(frame + (i * L2_TABLE_SIZE), 0);
+            entry.set_l2_table(frame + (i * size_of::<SeconLevelTable>()), 0);
         }
         match self.table[l1_index].get_type() {
             EntryKind::SeconLevelTable(table) => Ok(table),

@@ -1,13 +1,18 @@
 use crate::mmu::l2entry::L2Entry;
 use crate::mmu::PagePerm;
 
+const L1_ENTRY_COUNT: usize = 4096;
+const L2_ENTRY_COUNT: usize = 256;
+
 pub(super) struct Entry {
     value: usize,
 }
 
+pub(super) type SeconLevelTable = [L2Entry; L2_ENTRY_COUNT];
+
 pub(super) enum EntryKind<'a> {
     Unmapped,
-    SeconLevelTable(&'a mut [L2Entry]),
+    SeconLevelTable(&'a mut SeconLevelTable),
     Section(usize),
     SuperSection,
 }
@@ -16,7 +21,6 @@ impl Entry {
     const SUPERSECTION_BIT: usize = 1 << 18;
     const SECTION_MASK: usize = 0xfff00000;
     const L2_TABLE_MASK: usize = 0xfffffc00;
-    pub(super) const L2_ENTRY_COUNT: usize = 256;
 
     const IGNORED_ENTRY_MAGIC: usize = 0b00;
     const SECOND_LEVEL_TABLE_MAGIC: usize = 0b01;
@@ -26,7 +30,7 @@ impl Entry {
         match self.value & 0b11 {
             Self::IGNORED_ENTRY_MAGIC => EntryKind::Unmapped,
             Self::SECOND_LEVEL_TABLE_MAGIC => {
-                EntryKind::SeconLevelTable(self.as_l2_table_mut().unwrap())
+                EntryKind::SeconLevelTable(self.as_l2_table().unwrap())
             }
             Self::SECTION_MAGIC => {
                 if self.is_supersection() {
@@ -39,16 +43,11 @@ impl Entry {
         }
     }
 
-    fn as_l2_table_mut(&self) -> Option<&mut [L2Entry]> {
+    fn as_l2_table(&self) -> Option<&mut SeconLevelTable> {
         if self.value & 0b11 != Self::SECOND_LEVEL_TABLE_MAGIC {
             None
         } else {
-            Some(unsafe {
-                core::slice::from_raw_parts_mut(
-                    (self.value as *const L2Entry).cast_mut(),
-                    Self::L2_ENTRY_COUNT,
-                )
-            })
+            Some(unsafe { &mut *(self.value as *mut SeconLevelTable) })
         }
     }
 
