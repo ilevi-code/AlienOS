@@ -6,7 +6,7 @@ use core::mem::size_of;
 use static_assertions::const_assert;
 
 use crate::mmu::addr_parts::AddrParts;
-use crate::mmu::entry::Entry;
+use crate::mmu::entry::{Entry, EntryKind};
 use crate::mmu::error::{MapError, Result};
 use crate::mmu::l2entry::{L2Entry, L2EntryType};
 use crate::mmu::PagePerm;
@@ -109,12 +109,10 @@ impl<'a> TranslationTableBuilder<'a> {
     fn map_once(&mut self, addr: &AddrParts, phys: usize, perm: PagePerm) -> Result<()> {
         let entry = self.get_l1(addr.l1_index);
 
-        let l2_table = if let Some(l2_table) = entry.as_l2_table_mut() {
-            l2_table
-        } else {
-            self.map_l2_at(addr.l1_index)?
-                .as_l2_table_mut()
-                .expect("Entry should contains L2 table after mapping")
+        let l2_table = match entry.get_type() {
+            EntryKind::SeconLevelTable(l2_table) => l2_table,
+            EntryKind::Unmapped => self.create_l2table(addr.l1_index)?,
+            _ => return Err(MapError::Remap),
         };
 
         if l2_table[addr.l2_index].get_type() != L2EntryType::Unmapped {
@@ -131,7 +129,7 @@ impl<'a> TranslationTableBuilder<'a> {
     }
 
     /// Makes sure that the second level table at `l1_index` is mapped and accessible.
-    fn map_l2_at(&mut self, l1_index: usize) -> Result<&mut Entry> {
+    fn create_l2table(&mut self, l1_index: usize) -> Result<&mut [L2Entry]> {
         let frame = kalloc::alloc_frame();
         let base_index = align_down(l1_index, L2_TABLES_PER_BLOCK);
 
@@ -139,12 +137,16 @@ impl<'a> TranslationTableBuilder<'a> {
             .iter_mut()
             .enumerate()
         {
-            if entry.is_mapped() {
-                return Err(MapError::Remap);
-            }
+            match entry.get_type() {
+                EntryKind::Unmapped => (),
+                _ => return Err(MapError::Remap),
+            };
             entry.set_l2_table(frame + (i * L2_TABLE_SIZE), 0);
         }
-        Ok(&mut self.table[l1_index])
+        match self.table[l1_index].get_type() {
+            EntryKind::SeconLevelTable(table) => Ok(table),
+            _ => panic!("Entry isn't second-level-table after creation"),
+        }
     }
 
     pub fn apply(self) {

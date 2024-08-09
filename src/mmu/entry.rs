@@ -5,10 +5,10 @@ pub(super) struct Entry {
     value: usize,
 }
 
-pub(super) enum EntryType {
+pub(super) enum EntryKind<'a> {
     Unmapped,
-    SeconLevelTable,
-    Section,
+    SeconLevelTable(&'a mut [L2Entry]),
+    Section(usize),
     SuperSection,
 }
 
@@ -22,27 +22,24 @@ impl Entry {
     const SECOND_LEVEL_TABLE_MAGIC: usize = 0b01;
     const SECTION_MAGIC: usize = 0b10;
 
-    pub fn get_type(&self) -> EntryType {
+    pub fn get_type(&self) -> EntryKind {
         match self.value & 0b11 {
-            Self::IGNORED_ENTRY_MAGIC => EntryType::Unmapped,
-            Self::SECOND_LEVEL_TABLE_MAGIC => EntryType::SeconLevelTable,
+            Self::IGNORED_ENTRY_MAGIC => EntryKind::Unmapped,
+            Self::SECOND_LEVEL_TABLE_MAGIC => {
+                EntryKind::SeconLevelTable(self.as_l2_table_mut().unwrap())
+            }
             Self::SECTION_MAGIC => {
                 if self.is_supersection() {
-                    EntryType::SuperSection
+                    EntryKind::SuperSection
                 } else {
-                    EntryType::Section
+                    EntryKind::Section(self.as_section())
                 }
             }
             _ => panic!("Unsupported entry type"),
         }
     }
 
-    pub(super) fn as_l2_table(&self) -> &[L2Entry] {
-        assert!(self.value & 0b11 == Self::SECOND_LEVEL_TABLE_MAGIC);
-        unsafe { core::slice::from_raw_parts(self.value as *const L2Entry, Self::L2_ENTRY_COUNT) }
-    }
-
-    pub(super) fn as_l2_table_mut(&self) -> Option<&mut [L2Entry]> {
+    fn as_l2_table_mut(&self) -> Option<&mut [L2Entry]> {
         if self.value & 0b11 != Self::SECOND_LEVEL_TABLE_MAGIC {
             None
         } else {
@@ -55,12 +52,8 @@ impl Entry {
         }
     }
 
-    pub(super) fn as_section(&self) -> usize {
+    fn as_section(&self) -> usize {
         self.value & Self::SECTION_MASK
-    }
-
-    pub(super) fn is_mapped(&self) -> bool {
-        self.value & 0x3 != 0
     }
 
     fn set_section(&mut self, phys: usize, perm: PagePerm, domain: u8) {

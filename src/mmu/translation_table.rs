@@ -1,5 +1,5 @@
 use crate::mmu::addr_parts::AddrParts;
-use crate::mmu::entry::{Entry, EntryType};
+use crate::mmu::entry::{Entry, EntryKind};
 
 const L1_ENTRY_COUNT: usize = 4096;
 
@@ -18,10 +18,9 @@ impl<'a> TranslationTable<'a> {
         let parts = AddrParts::from(virt);
         let entry = &self.table[parts.l1_index];
         match entry.get_type() {
-            EntryType::Unmapped => None,
-            EntryType::Section => Some(entry.as_section() + parts.section_offset()),
-            EntryType::SeconLevelTable => {
-                let l2_table = entry.as_l2_table();
+            EntryKind::Unmapped => None,
+            EntryKind::Section(section_base) => Some(section_base + parts.section_offset()),
+            EntryKind::SeconLevelTable(l2_table) => {
                 let l2_entry = &l2_table[parts.l2_index];
                 l2_entry.get_phys().map(|addr| addr + parts.page_offset)
             }
