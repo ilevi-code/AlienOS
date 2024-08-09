@@ -1,31 +1,20 @@
 use crate::console::println;
-use core::cell::UnsafeCell;
-use core::mem::MaybeUninit;
+use core::{cell::UnsafeCell, mem::MaybeUninit};
 
 // The first 1GB is MMIO
-const PHYS_START: usize = 0x40000000;
 pub const BLOCK_SIZE: usize = 0x4000;
 
 struct FreePage {
     next: *mut FreePage,
 }
 
-struct PageAllocator {
+struct PageAllocatorImpl {
     head: *mut u8,
     end: *mut u8,
     free_list: *mut FreePage,
 }
 
-unsafe impl Sync for PageAllocator {}
-
-struct Cell<T> {
-    inner: UnsafeCell<T>,
-}
-
-unsafe impl<T> Sync for Cell<T> {}
-
-// TODO Box like blocks with lifetimes
-impl PageAllocator {
+impl PageAllocatorImpl {
     pub fn alloc_frame(&mut self) -> usize {
         return match unsafe { self.free_list.as_mut() } {
             Some(list_head) => {
@@ -33,7 +22,7 @@ impl PageAllocator {
                 self.free_list = new_head;
                 poped
             }
-            None => self.advance_head(),
+            None => self.advance_head(1),
         };
     }
 
@@ -42,9 +31,9 @@ impl PageAllocator {
         (old_head as usize, list_head.next)
     }
 
-    fn advance_head(&mut self) -> usize {
+    fn advance_head(&mut self, blocks: usize) -> usize {
         unsafe {
-            let new_head = self.head.add(BLOCK_SIZE);
+            let new_head = self.head.add(BLOCK_SIZE * blocks);
             if self.end.offset_from(new_head) < BLOCK_SIZE as isize {
                 panic!("Out of memory!");
             }
@@ -63,8 +52,18 @@ impl PageAllocator {
     }
 }
 
-static PAGE_ALLOCATOR: Cell<MaybeUninit<PageAllocator>> = Cell {
-    inner: UnsafeCell::new(MaybeUninit::uninit()),
+struct PageAllocator(UnsafeCell<MaybeUninit<PageAllocatorImpl>>);
+
+unsafe impl Sync for PageAllocator {}
+
+impl PageAllocator {
+    fn get(&self) -> &mut MaybeUninit<PageAllocatorImpl> {
+        unsafe { &mut *self.0.get() }
+    }
+}
+
+static PAGE_ALLOCATOR: PageAllocator = PageAllocator {
+    0: UnsafeCell::new(MaybeUninit::uninit()),
 };
 
 pub fn init(kern_end: usize, ram_end: usize) {
@@ -78,27 +77,19 @@ pub fn init(kern_end: usize, ram_end: usize) {
         size /= 1024;
     }
     println!("kalloc init: {:x}, size {}{}B", kern_end, size, scale);
-    unsafe {
-        (*PAGE_ALLOCATOR.inner.get()).write(PageAllocator {
-            head: kern_end as *mut u8,
-            end: ram_end as *mut u8,
-            free_list: core::ptr::null_mut(),
-        });
-    }
+    PAGE_ALLOCATOR.get().write(PageAllocatorImpl {
+        head: kern_end as *mut u8,
+        end: ram_end as *mut u8,
+        free_list: core::ptr::null_mut(),
+    });
 }
 
 pub fn alloc_frame() -> usize {
-    unsafe {
-        (*PAGE_ALLOCATOR.inner.get())
-            .assume_init_mut()
-            .alloc_frame()
-    }
+    unsafe { PAGE_ALLOCATOR.get().assume_init_mut() }.alloc_frame()
 }
 
 pub fn free_frame(frame: usize) {
     unsafe {
-        (*PAGE_ALLOCATOR.inner.get())
-            .assume_init_mut()
-            .free_frame(frame);
+        PAGE_ALLOCATOR.get().assume_init_mut().free_frame(frame);
     }
 }
