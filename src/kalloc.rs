@@ -78,7 +78,7 @@ pub fn init(kern_end: usize, ram_end: usize) {
         }
         size /= 1024;
     }
-    println!("init: {:x}, size {}{}B", kern_end, size, scale);
+    println!("kalloc init: {:x}, size {}{}B", kern_end, size, scale);
     unsafe {
         (*PAGE_ALLOCATOR.inner.get()).write(PageAllocator {
             head: kern_end as *mut u8,
