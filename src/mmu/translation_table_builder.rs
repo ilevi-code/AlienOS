@@ -23,38 +23,6 @@ pub const SMALL_PAGE_SIZE: usize = 4096;
 const SECTION_SIZE: usize = 1024 * 1024;
 const USER_END: usize = 0x80000000;
 
-// TODO delete
-// pub fn replace_section(table: EntryPtr, virt: usize, phys: usize) {
-//     let parts = AddrParts::from(virt);
-//     let entry = unsafe { table.add(parts.l1_index).as_mut().unwrap() };
-//     // TODO free_frame if this is a second level table
-//     entry.unmap();
-
-//     entry.set_section(phys, PagePerm::KernOnly, 0);
-// }
-
-// pub fn find_unmapped(self: &L2Table, len: usize) -> Option<usize> {
-//     let mut total = 0usize;
-//     let mut offset = Some(0usize);
-//     for (i, entry) in self.entries.iter().enumerate() {
-//         if entry.value != 0 {
-//             total = 0;
-//             offset = None;
-//             continue;
-//         }
-
-//         if offset.is_none() {
-//             offset = Some(i);
-//         }
-//         total += SMALL_PAGE_SIZE;
-
-//         if total > len {
-//             return offset;
-//         }
-//     }
-//     None
-// }
-
 pub struct TranslationTableBuilder<'a> {
     table: &'a mut [Entry],
 }
