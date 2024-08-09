@@ -1,5 +1,4 @@
 use crate::console::println;
-use crate::mmu;
 use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
 
