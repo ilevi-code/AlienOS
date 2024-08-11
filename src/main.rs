@@ -1,50 +1,37 @@
 #![no_std]
 #![no_main]
 
+mod arch;
 mod console;
 mod dtb;
 mod kalloc;
 mod kernel_location;
 mod mmu;
 mod panic_handler;
+mod phys;
 mod step_range;
 
-use dtb::DeviceTreeBlob;
+use arch::get_ttbr0;
+use dtb::DeviceTree;
 use kernel_location::get_kernel_location;
-use mmu::{PagePerm, TranslationTable, TranslationTableBuilder};
+use mmu::{PagePerm, TranslationTable};
 
 // TODO parse from DTB
 const RAM_SIZE: usize = 0x2000_0000;
 const KERN_LINK: usize = 0xc000_0000;
 
 #[no_mangle]
-pub unsafe extern "C" fn main(_dtb: *mut DeviceTreeBlob, bootstrap_table: usize) -> ! {
+pub unsafe extern "C" fn main(_dtb: *mut DeviceTree, _bootstrap_table: usize) -> ! {
     kalloc::init(get_kernel_location().end, KERN_LINK + RAM_SIZE);
+    // TODO allocate enough space to copy and save the DeviceTree, before starting to do shit.
 
-    init_mmu_fine_grained(bootstrap_table);
+    init_mmu_fine_grained();
     panic!("kernel has reached it's end");
 }
 
-fn init_mmu_fine_grained(bootstrap_table: usize) {
-    let bootstrap_table = TranslationTable::from_base(bootstrap_table);
+fn init_mmu_fine_grained() {
     let kern_location = get_kernel_location();
-    let kern_phys = bootstrap_table
-        .virt_to_phys(kern_location.start)
-        .expect("Kernel should be mapped");
-    let mut builder =
-        TranslationTableBuilder::new().expect("Base MMU builder create should succeed");
-    // TODO map whole sections, save allocation
-    builder
-        .map(0x0, 0x0000_0000, 0x1000_0000, PagePerm::KernOnly)
-        .unwrap();
-    // TODO map the bootloader, our stack is in this region
-    builder
-        .map(
-            kern_location.start,
-            kern_phys,
-            kern_location.len(),
-            PagePerm::KernOnly,
-        )
-        .expect("Mapping kernel should succeed");
-    builder.apply();
+    let mut kern_table = TranslationTable::from_base(get_ttbr0());
+    kern_table.unmap(kern_location.end..0xffff_ffff);
+    // builder.apply();
 }

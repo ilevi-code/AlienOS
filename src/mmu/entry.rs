@@ -1,5 +1,6 @@
 use crate::mmu::l2entry::L2Entry;
 use crate::mmu::PagePerm;
+use crate::phys::Phys;
 
 const L1_ENTRY_COUNT: usize = 4096;
 const L2_ENTRY_COUNT: usize = 256;
@@ -9,11 +10,12 @@ pub(super) struct Entry {
 }
 
 pub(super) type SeconLevelTable = [L2Entry; L2_ENTRY_COUNT];
+pub(super) type Section = [u8; 1024 * 1024];
 
-pub(super) enum EntryKind<'a> {
+pub(super) enum EntryKind {
     Unmapped,
-    SeconLevelTable(&'a mut SeconLevelTable),
-    Section(usize),
+    SeconLevelTable(Phys<SeconLevelTable>),
+    Section(Phys<Section>),
     SuperSection,
 }
 
@@ -29,9 +31,7 @@ impl Entry {
     pub fn get_type(&self) -> EntryKind {
         match self.value & 0b11 {
             Self::IGNORED_ENTRY_MAGIC => EntryKind::Unmapped,
-            Self::SECOND_LEVEL_TABLE_MAGIC => {
-                EntryKind::SeconLevelTable(self.as_l2_table().unwrap())
-            }
+            Self::SECOND_LEVEL_TABLE_MAGIC => EntryKind::SeconLevelTable(self.as_l2_table()),
             Self::SECTION_MAGIC => {
                 if self.is_supersection() {
                     EntryKind::SuperSection
@@ -43,19 +43,15 @@ impl Entry {
         }
     }
 
-    fn as_l2_table(&self) -> Option<&mut SeconLevelTable> {
-        if self.value & 0b11 != Self::SECOND_LEVEL_TABLE_MAGIC {
-            None
-        } else {
-            Some(unsafe { &mut *(self.value as *mut SeconLevelTable) })
-        }
+    fn as_l2_table(&self) -> Phys<SeconLevelTable> {
+        (self.value & Self::L2_TABLE_MASK).into()
     }
 
-    fn as_section(&self) -> usize {
-        self.value & Self::SECTION_MASK
+    fn as_section(&self) -> Phys<Section> {
+        (self.value & Self::SECTION_MASK).into()
     }
 
-    fn set_section(&mut self, phys: usize, perm: PagePerm, domain: u8) {
+    pub fn set_section(&mut self, phys: usize, perm: PagePerm, domain: u8) {
         self.value = (phys & Self::SECTION_MASK)
             | (perm.translate() << 10)
             | ((domain as usize) << 5)
@@ -68,7 +64,7 @@ impl Entry {
             | Self::SECOND_LEVEL_TABLE_MAGIC;
     }
 
-    fn unmap(&mut self) {
+    pub fn unmap(&mut self) {
         self.value = 0;
     }
 
