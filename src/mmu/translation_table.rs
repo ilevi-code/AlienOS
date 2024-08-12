@@ -3,6 +3,7 @@ use core::ops::Range;
 
 use crate::console::println;
 use crate::kalloc;
+use crate::memory_model::phys_to_virt;
 use crate::mmu::addr_parts::AddrParts;
 use crate::mmu::entry::{Entry, EntryKind, SeconLevelTable, Section};
 use crate::mmu::error::{MapError, Result};
@@ -22,30 +23,17 @@ pub struct TranslationTable<'a> {
 }
 
 impl<'a> TranslationTable<'a> {
-    // Given to us by qemu
-    const MEM_START: usize = 0x4000_0000;
-    // Start of memory controlled by ttbr0 in 1:1 split.
-    const PHYS_MAP_START: usize = 0x8000_0000;
-    // In the current memory model, 1GB of the physical memory is mapped to the third quarter of
-    // memory
-    const PHYS_TO_VIRT: usize = TranslationTable::PHYS_MAP_START - TranslationTable::MEM_START;
-
     pub fn from_base(base: usize) -> Self {
         Self {
             table: unsafe { &mut *(base as *mut L1Table) },
         }
     }
 
-    fn phys_to_virt<T>(phys: &Phys<T>) -> &'a mut T {
-        let ptr = (phys.addr() + TranslationTable::PHYS_TO_VIRT) as *mut T;
-        unsafe { &mut *ptr }
-    }
-
     pub fn new() -> Self {
         let frame = kalloc::alloc_frame();
         let table_phys = Phys::<L1Table>::from(frame);
         Self {
-            table: TranslationTable::phys_to_virt(&table_phys),
+            table: phys_to_virt(&table_phys),
         }
         // Self {  }
     }
@@ -95,7 +83,7 @@ impl<'a> TranslationTable<'a> {
         let entry = self.get_l1(addr.l1_index);
 
         let l2_table = match entry.get_type() {
-            EntryKind::SeconLevelTable(l2_table) => TranslationTable::phys_to_virt(&l2_table),
+            EntryKind::SeconLevelTable(l2_table) => phys_to_virt(&l2_table),
             EntryKind::Unmapped => self.create_l2table(addr.l1_index)?,
             _ => return Err(MapError::Remap),
         };
@@ -133,7 +121,7 @@ impl<'a> TranslationTable<'a> {
             entry.set_l2_table(frame + (i * size_of::<SeconLevelTable>()), 0);
         }
         match self.table[l1_index].get_type() {
-            EntryKind::SeconLevelTable(table) => Ok(TranslationTable::phys_to_virt(&table)),
+            EntryKind::SeconLevelTable(table) => Ok(phys_to_virt(&table)),
             _ => panic!("Entry isn't second-level-table after creation"),
         }
     }
@@ -149,7 +137,7 @@ impl<'a> TranslationTable<'a> {
             EntryKind::Unmapped => None,
             EntryKind::Section(section_base) => Some(section_base.addr() + parts.section_offset()),
             EntryKind::SeconLevelTable(l2_table_phys) => {
-                let l2_table = TranslationTable::phys_to_virt(&l2_table_phys);
+                let l2_table = phys_to_virt(&l2_table_phys);
                 let l2_entry = &l2_table[parts.l2_index];
                 l2_entry.get_phys().map(|addr| addr + parts.page_offset)
             }
