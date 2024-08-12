@@ -6,9 +6,9 @@ use crate::num::{Align, OverflowingAdd};
 
 #[derive(Clone)]
 pub struct StepRange<T> {
-    start: T,
-    end: T,
-    step: T,
+    pub start: T,
+    pub end: T,
+    pub step: T,
 }
 
 impl<T> StepRange<T> {

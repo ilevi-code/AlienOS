@@ -1,7 +1,3 @@
-use crate::console::println;
-use crate::kalloc;
-use crate::phys::Phys;
-use crate::step_range::StepRange;
 use core::mem::size_of;
 use core::ops::Range;
 
@@ -157,6 +153,17 @@ impl<'a> TranslationTable<'a> {
                 let l2_entry = &l2_table[parts.l2_index];
                 l2_entry.get_phys().map(|addr| addr + parts.page_offset)
             }
+            _ => panic!("Unsupported entry type"),
+        }
+    }
+
+    pub fn next_entry(&self, addr: usize) -> Option<usize> {
+        let parts = AddrParts::from(addr);
+        let entry = &self.table[parts.l1_index];
+        match entry.get_type() {
+            EntryKind::Unmapped => None,
+            EntryKind::Section(_) => Some(addr.align_up(size_of::<Section>())),
+            EntryKind::SeconLevelTable(_) => unimplemented!(),
             _ => panic!("Unsupported entry type"),
         }
     }

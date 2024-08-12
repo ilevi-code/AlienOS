@@ -6,6 +6,7 @@ mod console;
 mod dtb;
 mod kalloc;
 mod kernel_location;
+mod memory_model;
 mod mmu;
 mod num;
 mod panic_handler;
@@ -33,7 +34,7 @@ pub unsafe extern "C" fn main(_dtb: *mut DeviceTree, _bootstrap_table: usize) ->
 fn init_mmu_fine_grained() {
     let kern_location = get_kernel_location();
     let mut kern_table = TranslationTable::from_base(get_ttbr0());
-    kern_table.unmap((kern_location.end + 0x100_000)..0xffff_ffff);
+    kern_table.unmap(kern_table.next_entry(kern_location.end).unwrap()..0xffff_ffff);
     // kern_table.map_device()
     // builder.apply();
 }
