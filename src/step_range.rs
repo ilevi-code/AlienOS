@@ -1,6 +1,8 @@
 use core::cmp::Ord;
 use core::mem;
-use core::ops::Add;
+use core::ops::{Add, Range};
+
+use crate::num::{Align, OverflowingAdd};
 
 #[derive(Clone)]
 pub struct StepRange<T> {
@@ -15,15 +17,27 @@ impl<T> StepRange<T> {
     }
 }
 
-impl<T: Add<Output = T> + Ord + Clone> Iterator for StepRange<T> {
+impl<T: Align + Copy> StepRange<T> {
+    pub fn align_from(range: Range<T>, step: T) -> Self {
+        Self {
+            start: range.start.align_down(step),
+            end: range.end.align_up(step),
+            step,
+        }
+    }
+}
+
+impl<T: Add<Output = T> + Ord + Copy + OverflowingAdd> Iterator for StepRange<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.start < self.end {
-            let n = self.start.clone() + self.step.clone();
-            Some(mem::replace(&mut self.start, n))
-        } else {
-            None
+            return None;
         }
+        let (n, overflow) = self.start.overflowing_add(self.step);
+        if overflow {
+            return None;
+        }
+        Some(mem::replace(&mut self.start, n))
     }
 }

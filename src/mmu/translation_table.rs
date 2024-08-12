@@ -5,21 +5,16 @@ use crate::step_range::StepRange;
 use core::mem::size_of;
 use core::ops::Range;
 
+use crate::console::println;
+use crate::kalloc;
 use crate::mmu::addr_parts::AddrParts;
 use crate::mmu::entry::{Entry, EntryKind, SeconLevelTable, Section};
 use crate::mmu::error::{MapError, Result};
 use crate::mmu::l2entry::L2EntryType;
 use crate::mmu::PagePerm;
-
-fn align_down(val: usize, align: usize) -> usize {
-    let mask = align - 1;
-    val & (!mask)
-}
-
-fn align_up(val: usize, align: usize) -> usize {
-    let mask = align - 1;
-    (val + align - 1) & (!mask)
-}
+use crate::num::Align;
+use crate::phys::Phys;
+use crate::step_range::StepRange;
 
 pub const SMALL_PAGE_SIZE: usize = 4096;
 const L1_ENTRY_COUNT: usize = 4096;
@@ -129,7 +124,7 @@ impl<'a> TranslationTable<'a> {
         // new block to map the several tables surrounding the table needed.
         const L2_TABLES_PER_BLOCK: usize =
             size_of::<kalloc::Block>() / size_of::<SeconLevelTable>();
-        let base_index = align_down(l1_index, L2_TABLES_PER_BLOCK);
+        let base_index = l1_index.align_down(L2_TABLES_PER_BLOCK);
 
         for (i, entry) in self.table[base_index..base_index + L2_TABLES_PER_BLOCK]
             .iter_mut()
@@ -168,13 +163,7 @@ impl<'a> TranslationTable<'a> {
 
     pub fn unmap(&mut self, range: Range<usize>) {
         const SECTION_SIZE: usize = size_of::<Section>();
-        let end = if range.end > 0xffffffff - SECTION_SIZE {
-            self.table.last_mut().unwrap().unmap();
-            0usize.wrapping_sub(SECTION_SIZE)
-        } else {
-            align_up(range.end, SECTION_SIZE)
-        };
-        let range = StepRange::new(align_up(range.start, SECTION_SIZE), end, SECTION_SIZE);
+        let range = StepRange::align_from(range, SECTION_SIZE);
         for addr in range {
             let parts = AddrParts::from(addr);
             let entry = &mut self.table[parts.l1_index];
