@@ -278,7 +278,17 @@ unsafe impl GlobalAlloc for Allocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        todo!()
+        self.get()
+            .as_mut()
+            // Also, this indicates free before alloc, since alloc should have paniced first
+            .expect("Heap should be initilized before free")
+            .free(
+                ptr,
+                BlockLayout::from(layout)
+                    // The layout should be same as in alloc, if conversion have already succeeded once.
+                    .expect("Free block layout creation should have succeeded")
+                    .size(),
+            )
     }
 }
 
@@ -307,8 +317,4 @@ pub fn init(kern_end: usize, ram_end: usize) {
 pub fn alloc<T>() -> Result<Phys<T>, AllocError> {
     let phys = PAGE_ALLOCATOR.do_alloc(Layout::new::<T>())?.cast::<T>();
     Ok(phys)
-}
-
-pub fn free_frame(frame: usize) {
-    todo!();
 }
