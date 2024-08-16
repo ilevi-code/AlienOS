@@ -2,15 +2,14 @@ use core::mem::size_of;
 use core::ops::Range;
 
 use crate::console::println;
-use crate::kalloc;
-use crate::memory_model::phys_to_virt;
+use crate::heap;
+use crate::memory_model::phys_to_virt_mut;
 use crate::mmu::addr_parts::AddrParts;
 use crate::mmu::entry::{Entry, EntryKind, SeconLevelTable, Section};
 use crate::mmu::error::{MapError, Result};
 use crate::mmu::l2entry::L2EntryType;
 use crate::mmu::PagePerm;
 use crate::num::Align;
-use crate::phys::Phys;
 use crate::step_range::StepRange;
 
 pub const SMALL_PAGE_SIZE: usize = 4096;
@@ -29,13 +28,10 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
-    pub fn new() -> Self {
-        let frame = kalloc::alloc_frame();
-        let table_phys = Phys::<L1Table>::from(frame);
-        Self {
-            table: phys_to_virt(&table_phys),
-        }
-        // Self {  }
+    pub fn new() -> core::result::Result<Self, heap::AllocError> {
+        Ok(Self {
+            table: crate::memory_model::phys_to_virt_mut(&heap::alloc::<L1Table>()?),
+        })
     }
 
     pub fn map_sections(
@@ -83,7 +79,7 @@ impl<'a> TranslationTable<'a> {
         let entry = self.get_l1(addr.l1_index);
 
         let l2_table = match entry.get_type() {
-            EntryKind::SeconLevelTable(l2_table) => phys_to_virt(&l2_table),
+            EntryKind::SeconLevelTable(l2_table) => phys_to_virt_mut(&l2_table),
             EntryKind::Unmapped => self.create_l2table(addr.l1_index)?,
             _ => return Err(MapError::Remap),
         };
@@ -103,25 +99,18 @@ impl<'a> TranslationTable<'a> {
 
     /// Makes sure that the second level table at `l1_index` is mapped and accessible.
     fn create_l2table(&mut self, l1_index: usize) -> Result<&mut SeconLevelTable> {
-        let frame = kalloc::alloc_frame();
-        // Since a frame returned by calloc is bigger than a single second layer table, we use the
-        // new block to map the several tables surrounding the table needed.
-        const L2_TABLES_PER_BLOCK: usize =
-            size_of::<kalloc::Block>() / size_of::<SeconLevelTable>();
-        let base_index = l1_index.align_down(L2_TABLES_PER_BLOCK);
-
-        for (i, entry) in self.table[base_index..base_index + L2_TABLES_PER_BLOCK]
-            .iter_mut()
-            .enumerate()
-        {
-            match entry.get_type() {
-                EntryKind::Unmapped => (),
-                _ => return Err(MapError::Remap),
-            };
-            entry.set_l2_table(frame + (i * size_of::<SeconLevelTable>()), 0);
-        }
+        let Ok(new_l2_table) = heap::alloc::<SeconLevelTable>() else {
+            return Err(MapError::AllocError);
+        };
+        let entry = &mut self.table[l1_index];
+        match entry.get_type() {
+            EntryKind::Unmapped => (),
+            _ => return Err(MapError::Remap),
+        };
+        entry.set_l2_table(new_l2_table, 0);
+        // TODO Ok(phys_to_virt(frame))
         match self.table[l1_index].get_type() {
-            EntryKind::SeconLevelTable(table) => Ok(phys_to_virt(&table)),
+            EntryKind::SeconLevelTable(table) => Ok(phys_to_virt_mut(&table)),
             _ => panic!("Entry isn't second-level-table after creation"),
         }
     }
@@ -137,7 +126,7 @@ impl<'a> TranslationTable<'a> {
             EntryKind::Unmapped => None,
             EntryKind::Section(section_base) => Some(section_base.addr() + parts.section_offset()),
             EntryKind::SeconLevelTable(l2_table_phys) => {
-                let l2_table = phys_to_virt(&l2_table_phys);
+                let l2_table = phys_to_virt_mut(&l2_table_phys);
                 let l2_entry = &l2_table[parts.l2_index];
                 l2_entry.get_phys().map(|addr| addr + parts.page_offset)
             }

@@ -58,8 +58,8 @@ impl Entry {
             | (Self::SECTION_MAGIC);
     }
 
-    pub(super) fn set_l2_table(&mut self, phys: usize, domain: u8) {
-        self.value = (phys & Self::L2_TABLE_MASK)
+    pub(super) fn set_l2_table(&mut self, phys: Phys<SeconLevelTable>, domain: u8) {
+        self.value = (phys.addr() & Self::L2_TABLE_MASK)
             | ((domain as usize) << 5)
             | Self::SECOND_LEVEL_TABLE_MAGIC;
     }
