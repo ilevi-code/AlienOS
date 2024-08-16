@@ -3,6 +3,7 @@
 use crate::console::println;
 use crate::num::Align;
 use crate::phys::Phys;
+use crate::spinlock::SpinLock;
 use core::alloc::{GlobalAlloc, Layout, LayoutError};
 use core::cell::UnsafeCell;
 use core::cmp::{max, Ordering};
@@ -103,7 +104,7 @@ impl Block {
     }
 }
 
-struct AllocatorImpl {
+struct KernAlloctor {
     curr: *mut Block,
     end: *mut Block,
     free_list: Option<*mut Block>,
@@ -129,7 +130,7 @@ pub(crate) enum AllocError {
     OutOfMem,
 }
 
-impl AllocatorImpl {
+impl KernAlloctor {
     pub fn alloc(&mut self, layout: Layout) -> Result<Phys<u8>, AllocError> {
         let layout = BlockLayout::from(layout)?;
         let ptr = match self.look_for_freed_block(layout) {
@@ -247,27 +248,13 @@ impl AllocatorImpl {
     }
 }
 
-struct Allocator(UnsafeCell<Option<AllocatorImpl>>);
+struct GlobalKernAllocator(SpinLock<Option<KernAlloctor>>);
 
-unsafe impl Sync for Allocator {}
-
-impl Allocator {
-    fn get(&self) -> &mut Option<AllocatorImpl> {
-        unsafe { &mut *self.0.get() }
-    }
-
-    fn do_alloc(&self, layout: Layout) -> Result<Phys<u8>, AllocError> {
-        self.get()
-            .as_mut()
-            .expect("Heap should be initilized before alloc")
-            .alloc(layout)
-    }
-}
-
-unsafe impl GlobalAlloc for Allocator {
+unsafe impl GlobalAlloc for GlobalKernAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         match self
-            .get()
+            .0
+            .lock()
             .as_mut()
             .expect("Heap should be initilized before alloc")
             .alloc(layout)
@@ -278,7 +265,8 @@ unsafe impl GlobalAlloc for Allocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.get()
+        self.0
+            .lock()
             .as_mut()
             // Also, this indicates free before alloc, since alloc should have paniced first
             .expect("Heap should be initilized before free")
@@ -292,8 +280,8 @@ unsafe impl GlobalAlloc for Allocator {
     }
 }
 
-static PAGE_ALLOCATOR: Allocator = Allocator {
-    0: UnsafeCell::new(None),
+static ALLOCATOR: GlobalKernAllocator = GlobalKernAllocator {
+    0: SpinLock::new(None),
 };
 
 pub fn init(kern_end: usize, ram_end: usize) {
@@ -307,7 +295,7 @@ pub fn init(kern_end: usize, ram_end: usize) {
         size /= 1024;
     }
     println!("kalloc init: {:x}, size {}{}B", kern_end, size, scale);
-    *PAGE_ALLOCATOR.get() = Some(AllocatorImpl {
+    *ALLOCATOR.0.lock() = Some(KernAlloctor {
         curr: kern_end as *mut Block,
         end: ram_end as *mut Block,
         free_list: None,
@@ -315,6 +303,12 @@ pub fn init(kern_end: usize, ram_end: usize) {
 }
 
 pub fn alloc<T>() -> Result<Phys<T>, AllocError> {
-    let phys = PAGE_ALLOCATOR.do_alloc(Layout::new::<T>())?.cast::<T>();
+    let phys = ALLOCATOR
+        .0
+        .lock()
+        .as_mut()
+        .expect("Heap should be initlized before alloc")
+        .alloc(Layout::new::<T>())?
+        .cast::<T>();
     Ok(phys)
 }
