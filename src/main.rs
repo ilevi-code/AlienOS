@@ -1,4 +1,4 @@
-#![feature(pointer_is_aligned_to)]
+#![feature(pointer_is_aligned_to, negative_impls)]
 #![no_std]
 #![no_main]
 
@@ -12,6 +12,7 @@ mod mmu;
 mod num;
 mod panic_handler;
 mod phys;
+mod spinlock;
 mod step_range;
 
 use arch::get_ttbr0;
