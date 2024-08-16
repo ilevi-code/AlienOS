@@ -17,7 +17,11 @@ const MEM_START: usize = 0x4000_0000;
 const PHYS_MAP_START: usize = 0x8000_0000;
 const PHYS_TO_VIRT: usize = PHYS_MAP_START - MEM_START;
 
-pub fn phys_to_virt<T>(phys: &Phys<T>) -> &'static mut T {
-    let ptr = (phys.addr() + PHYS_TO_VIRT) as *mut T;
-    unsafe { &mut *ptr }
+pub fn phys_to_virt<T>(phys: &Phys<T>) -> *mut T {
+    (phys.addr() + PHYS_TO_VIRT) as *mut T
+}
+
+pub fn phys_to_virt_mut<T>(phys: &Phys<T>) -> &'static mut T {
+    let virt = phys_to_virt(phys);
+    unsafe { &mut *virt }
 }

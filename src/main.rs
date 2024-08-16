@@ -1,10 +1,11 @@
+#![feature(pointer_is_aligned_to)]
 #![no_std]
 #![no_main]
 
 mod arch;
 mod console;
 mod dtb;
-mod kalloc;
+mod heap;
 mod kernel_location;
 mod memory_model;
 mod mmu;
@@ -24,7 +25,7 @@ const KERN_LINK: usize = 0xc000_0000;
 
 #[no_mangle]
 pub unsafe extern "C" fn main(_dtb: *mut DeviceTree, _bootstrap_table: usize) -> ! {
-    kalloc::init(get_kernel_location().end, KERN_LINK + RAM_SIZE);
+    heap::init(get_kernel_location().end, KERN_LINK + RAM_SIZE);
     // TODO allocate enough space to copy and save the DeviceTree, before starting to do shit.
 
     init_mmu_fine_grained();

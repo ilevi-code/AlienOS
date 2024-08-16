@@ -21,10 +21,22 @@ impl<T> Phys<T> {
     pub fn addr(&self) -> usize {
         self.0 as usize
     }
+
+    pub fn cast<U>(self) -> Phys<U> {
+        Phys::<U> {
+            0: self.0 as *mut U,
+        }
+    }
 }
 
 impl<T> From<usize> for Phys<T> {
     fn from(value: usize) -> Phys<T> {
-        Phys::<T> { 0: value as *mut T }
+        Self { 0: value as *mut T }
+    }
+}
+
+impl<T> From<*mut T> for Phys<T> {
+    fn from(ptr: *mut T) -> Phys<T> {
+        Self { 0: ptr }
     }
 }
