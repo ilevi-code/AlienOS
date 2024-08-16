@@ -1,8 +1,11 @@
 use core::cmp::min;
 use core::fmt;
+use core::sync::atomic::{AtomicUsize, Ordering};
+
+pub(crate) static UART: AtomicUsize = AtomicUsize::new(0x9000000usize);
 
 pub fn write(s: &str) {
-    let uart0 = 0x9000000 as *mut u8;
+    let uart0 = UART.load(Ordering::Acquire) as *mut u8;
     for byte in s.bytes() {
         unsafe {
             uart0.write_volatile(byte);
