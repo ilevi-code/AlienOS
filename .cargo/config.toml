@@ -1,2 +1,5 @@
 [build]
 target = "armv7a-none-eabi"
+
+[target.armv7a-none-eabi]
+runner = "./run_qemu.sh"

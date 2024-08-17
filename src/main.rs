@@ -1,4 +1,6 @@
-#![feature(pointer_is_aligned_to, negative_impls)]
+#![reexport_test_harness_main = "test_main"]
+#![feature(pointer_is_aligned_to, negative_impls, custom_test_frameworks)]
+#![test_runner(crate::testing::test_runner)]
 #![no_std]
 #![no_main]
 
@@ -12,8 +14,10 @@ mod mmu;
 mod num;
 mod panic_handler;
 mod phys;
+mod semihosting;
 mod spinlock;
 mod step_range;
+mod testing;
 
 use arch::get_ttbr0;
 use dtb::DeviceTree;
@@ -26,6 +30,12 @@ const KERN_LINK: usize = 0xc000_0000;
 
 #[no_mangle]
 pub unsafe extern "C" fn main(_dtb: *mut DeviceTree, _bootstrap_table: usize) -> ! {
+    #[cfg(test)]
+    {
+        test_main();
+        semihosting::shutdown(0);
+    }
+
     heap::init(get_kernel_location().end, KERN_LINK + RAM_SIZE);
     // TODO allocate enough space to copy and save the DeviceTree, before starting to do shit.
 

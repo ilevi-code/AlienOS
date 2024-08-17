@@ -70,4 +70,12 @@ macro_rules! println {
     }};
 }
 
+macro_rules! print {
+    () => {};
+    ($($arg:tt)*) => {{
+        $crate::console::write_args(format_args!($($arg)*)).unwrap();
+    }};
+}
+
+pub(crate) use print;
 pub(crate) use println;
