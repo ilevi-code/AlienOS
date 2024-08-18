@@ -22,7 +22,7 @@ pub fn phys_to_virt<T>(phys: &Phys<T>) -> *mut T {
 }
 
 pub fn virt_to_phys<T>(phys: *mut T) -> Phys<T> {
-    Phys::from(phys.addr() - PHYS_TO_VIRT)
+    Phys::from(phys as usize - PHYS_TO_VIRT)
 }
 
 pub fn phys_to_virt_mut<T>(phys: &Phys<T>) -> &'static mut T {
