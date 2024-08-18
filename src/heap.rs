@@ -270,41 +270,29 @@ impl KernAlloctor {
     }
 
     fn free(&mut self, ptr: *mut u8, size: BlockSize) {
-        let mut freed = Self::create_freed_block(ptr, size);
+        let freed = Self::create_freed_block(ptr, size);
 
-        match self.free_list {
-            Some(first) => {
-                let freed = unsafe { freed.as_mut() };
-                match freed.end_ptr().cmp(&first) {
-                    Ordering::Less => {
-                        freed.next = Some(first);
-                        self.free_list = Some(freed.into());
-                        return;
-                    }
-                    Ordering::Equal => {
-                        freed.merge(first);
-                        self.free_list = Some(freed.into());
-                        return;
-                    }
-                    Ordering::Greater => (),
-                }
-            }
-            None => {
-                self.free_list = Some(freed);
-                return;
-            }
+        // When starting to iterate over a dummy, it is easy to insert before the current
+        // list-head.
+        let dummy = Block {
+            next: self.free_list,
+            size: BlockSize::from(1).unwrap(),
         };
 
-        let iter = self.free_list;
-        while let Some(mut current) = iter {
-            let Some(next) = unsafe { current.as_mut() }.next else {
-                break;
+        let mut current = NonNull::from(&dummy);
+        loop {
+            let next = match unsafe { current.as_mut() }.next {
+                Some(next) => next,
+                None => break,
             };
             if (current.as_ptr()..next.as_ptr()).contains(&(ptr as *mut Block)) {
                 break;
             }
+            current = next;
         }
-        Self::merge_adjacent_blocks(iter.unwrap(), freed);
+        Self::merge_adjacent_blocks(current, freed);
+        // Update the list head, `ptr` might inserted before the current head.
+        self.free_list = dummy.next;
     }
 
     fn create_freed_block(ptr: *mut u8, size: BlockSize) -> NonNull<Block> {
