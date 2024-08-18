@@ -2,7 +2,7 @@ use core::cmp::Ord;
 use core::mem;
 use core::ops::{Add, Range};
 
-use crate::num::{Align, OverflowingAdd};
+use crate::num::{AlignDown, AlignUp, OverflowingAdd};
 
 #[derive(Clone)]
 pub struct StepRange<T> {
@@ -17,7 +17,7 @@ impl<T> StepRange<T> {
     }
 }
 
-impl<T: Align + Copy> StepRange<T> {
+impl<T: AlignUp + AlignDown + Copy> StepRange<T> {
     pub fn align_from(range: Range<T>, step: T) -> Self {
         Self {
             start: range.start.align_down(step),

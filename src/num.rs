@@ -1,4 +1,4 @@
-use core::ops::{BitAnd, Not, Sub};
+use core::ops::{Add, Rem, Sub};
 
 pub trait OverflowingAdd: Sized {
     fn overflowing_add(self, rhs: Self) -> (Self, bool);
@@ -11,41 +11,42 @@ impl OverflowingAdd for usize {
 }
 
 trait Integer {
-    fn max() -> Self;
-
-    fn one() -> Self;
+    fn zero() -> Self;
 }
 
 impl Integer for usize {
-    fn max() -> Self {
-        usize::MAX
-    }
-
-    fn one() -> Self {
-        1
+    fn zero() -> Self {
+        0
     }
 }
 
-/// Note: Alignemnts must be a power of two
-pub trait Align {
+pub trait AlignDown {
     fn align_down(self, align: Self) -> Self;
+}
+
+impl<T> AlignDown for T
+where
+    T: Integer + Sub<Output = T> + Rem<Output = T> + Copy,
+{
+    fn align_down(self, align: Self) -> Self {
+        self - (self % align)
+    }
+}
+
+pub trait AlignUp {
     fn align_up(self, align: Self) -> Self;
 }
 
-impl<T> Align for T
+impl<T> AlignUp for T
 where
-    T: Integer + OverflowingAdd + Copy + Sub<Output = T> + Not<Output = T> + BitAnd<Output = T>,
+    T: Integer + Rem<Output = T> + Sub<Output = T> + Add<Output = T> + PartialEq + Copy,
 {
-    fn align_down(self, align: Self) -> Self {
-        let mask = align - Self::one();
-        self & (!mask)
-    }
-
     fn align_up(self, align: Self) -> Self {
-        let mask = align - Self::one();
-        match self.overflowing_add(align - Self::one()) {
-            (value, false) => value & (!mask),
-            _ => Self::max(),
+        let rem = self % align;
+        if rem == Self::zero() {
+            self
+        } else {
+            self - rem + align
         }
     }
 }

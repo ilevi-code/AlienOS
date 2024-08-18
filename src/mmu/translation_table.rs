@@ -9,7 +9,7 @@ use crate::mmu::entry::{Entry, EntryKind, SeconLevelTable, Section};
 use crate::mmu::error::{MapError, Result};
 use crate::mmu::l2entry::L2EntryType;
 use crate::mmu::PagePerm;
-use crate::num::Align;
+use crate::num::AlignUp;
 use crate::step_range::StepRange;
 
 pub const SMALL_PAGE_SIZE: usize = 4096;
