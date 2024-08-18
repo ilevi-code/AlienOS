@@ -1,4 +1,5 @@
 /// Use to represent a pointer to a **physical** memory
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct Phys<T>(*mut T);
 
 impl<T> Phys<T> {

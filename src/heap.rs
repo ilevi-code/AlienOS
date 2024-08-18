@@ -1,51 +1,44 @@
-// extern crate alloc;
-
 use crate::console::println;
-use crate::num::Align;
+use crate::memory_model::virt_to_phys;
+use crate::num::AlignUp;
 use crate::phys::Phys;
 use crate::spinlock::SpinLock;
 use core::alloc::{GlobalAlloc, Layout, LayoutError};
-use core::cell::UnsafeCell;
-use core::cmp::{max, Ordering};
+use core::cmp::Ordering;
 use core::mem::size_of;
-use core::ops::{Add, Sub, SubAssign};
+use core::num::NonZero;
+use core::ops::{Add, AddAssign, Sub};
+use core::ptr::NonNull;
+use static_assertions::const_assert;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
-struct BlockSize(usize);
+#[cfg_attr(test, derive(Debug))]
+struct BlockSize(NonZero<usize>);
 
 /// Keep allocation sizes aligned to multiple of `size_of::<Block>()`
 impl BlockSize {
-    fn from(byte_size: usize) -> BlockSize {
-        BlockSize {
-            // TODO ceil_div
-            0: byte_size.align_up(size_of::<Block>()),
-        }
-    }
-
-    unsafe fn from_unchecked(byte_size: usize) -> BlockSize {
-        BlockSize { 0: byte_size }
+    fn from(byte_size: usize) -> Option<BlockSize> {
+        Some(BlockSize {
+            0: NonZero::new(byte_size.align_up(size_of::<Block>()))?,
+        })
     }
 
     fn block_count(&self) -> usize {
-        self.0 / size_of::<Block>()
+        self.0.get() / size_of::<Block>()
     }
 
     fn byte_count(&self) -> usize {
-        self.0
-    }
-}
-
-impl SubAssign for BlockSize {
-    fn sub_assign(&mut self, rhs: Self) {
-        self.0 -= rhs.0
+        self.0.get()
     }
 }
 
 impl Sub for BlockSize {
-    type Output = BlockSize;
+    type Output = Option<BlockSize>;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        BlockSize { 0: self.0 - rhs.0 }
+        Some(BlockSize {
+            0: NonZero::new(self.0.get() - rhs.0.get())?,
+        })
     }
 }
 
@@ -53,7 +46,13 @@ impl Add for BlockSize {
     type Output = BlockSize;
 
     fn add(self, rhs: Self) -> Self::Output {
-        BlockSize { 0: self.0 + rhs.0 }
+        BlockSize::from(self.0.get() + rhs.0.get()).unwrap()
+    }
+}
+
+impl AddAssign for BlockSize {
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 = NonZero::new(self.0.get() + rhs.0.get()).unwrap()
     }
 }
 
@@ -66,8 +65,8 @@ struct BlockLayout {
 impl BlockLayout {
     fn from(layout: Layout) -> Result<BlockLayout, LayoutError> {
         Ok(Self {
-            size: BlockSize::from(layout.size()),
-            align: BlockSize::from(layout.align()),
+            size: BlockSize::from(layout.size()).unwrap(),
+            align: BlockSize::from(layout.align()).unwrap(),
         })
     }
 
@@ -80,8 +79,9 @@ impl BlockLayout {
     }
 }
 
+#[cfg_attr(test, derive(Debug))]
 struct Block {
-    next: Option<*mut Block>,
+    next: Option<NonNull<Block>>,
     size: BlockSize,
 }
 
@@ -102,12 +102,23 @@ impl Block {
             _ => SizeFit::Excess,
         }
     }
+
+    fn end_ptr(&mut self) -> NonNull<Block> {
+        let ptr = unsafe { (self as *mut Block).add(self.size.block_count()) };
+        NonNull::new(ptr).unwrap()
+    }
+
+    fn merge(&mut self, next: NonNull<Block>) -> () {
+        let next = unsafe { next.as_ref() };
+        self.size += next.size;
+        self.next = next.next;
+    }
 }
 
 struct KernAlloctor {
     curr: *mut Block,
     end: *mut Block,
-    free_list: Option<*mut Block>,
+    free_list: Option<NonNull<Block>>,
 }
 
 struct AlignmentReduction {
@@ -131,13 +142,13 @@ pub(crate) enum AllocError {
 }
 
 impl KernAlloctor {
-    pub fn alloc(&mut self, layout: Layout) -> Result<Phys<u8>, AllocError> {
+    fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocError> {
         let layout = BlockLayout::from(layout)?;
         let ptr = match self.look_for_freed_block(layout) {
             Some(block) => block,
             None => self.do_alloc(layout)?,
         };
-        Ok(Phys::<u8>::from(ptr))
+        Ok(ptr)
     }
 
     /// Looks for a block that is at big enough.
@@ -146,16 +157,18 @@ impl KernAlloctor {
         let mut iter = self.free_list;
         let mut prev: Option<&mut Block> = None;
         while let Some(current_ptr) = iter {
-            let current = unsafe { &mut *current_ptr };
+            let current = unsafe { &mut *current_ptr.as_ptr() };
             match current.check_fit(layout) {
                 SizeFit::Misfit => (),
-                SizeFit::Excess => return Some(unsafe { self.extract_block(current_ptr, layout) }),
+                SizeFit::Excess => {
+                    return Some(unsafe { self.extract_block(current_ptr.as_ptr(), layout) })
+                }
                 SizeFit::Exact => {
                     match prev {
                         Some(prev) => prev.next = current.next.take(),
                         None => (),
                     };
-                    return Some(current_ptr as *mut u8);
+                    return Some(current_ptr.as_ptr() as *mut u8);
                 }
             }
             iter = current.next;
@@ -169,18 +182,31 @@ impl KernAlloctor {
         size: BlockSize,
         align: BlockSize,
     ) -> AlignmentReduction {
-        let reduce_for_alignment = align - BlockSize(ptr.align_offset(align.byte_count()));
+        let aligned_size = BlockSize::from(size.byte_count().align_up(align.byte_count())).unwrap();
+        let reduce_for_alignment = match BlockSize::from(ptr.align_offset(align.byte_count()))
+            .map(|offset| align - offset)
+            .flatten()
+        {
+            None => {
+                return AlignmentReduction {
+                    total: aligned_size,
+                    excess: aligned_size - size,
+                }
+            }
+            Some(r) => r,
+        };
         match reduce_for_alignment.cmp(&size) {
             Ordering::Less => {
-                // in case reduce_for_alignment is smaller than needed, we want to reduce the
-                // bigger of either `size` or `align`.
-                // If size is bigger - alignment is enforced.
-                // If align is bigger - total size is guaranteed to be enough.
-                // alignments.
-                let total = reduce_for_alignment + max(size, align);
+                let total = if size <= align {
+                    // If align is bigger (or equal) - total size is guaranteed to be enough, and
+                    // alignment is enforced.
+                    align + reduce_for_alignment
+                } else {
+                    aligned_size + reduce_for_alignment
+                };
                 AlignmentReduction {
                     total,
-                    excess: Some(total - size),
+                    excess: total - size,
                 }
             }
             Ordering::Equal => AlignmentReduction {
@@ -189,7 +215,7 @@ impl KernAlloctor {
             },
             Ordering::Greater => AlignmentReduction {
                 total: reduce_for_alignment,
-                excess: Some(reduce_for_alignment - size),
+                excess: reduce_for_alignment - size,
             },
         }
     }
@@ -202,7 +228,7 @@ impl KernAlloctor {
         let AlignmentReduction { total, excess } =
             Self::calc_reduction_for_layout(block as *mut u8, layout.size(), layout.align());
         let allocated = end_of_block.sub(total.block_count());
-        (*block).size -= total;
+        (*block).size = ((*block).size - total).unwrap();
         if let Some(excess_size) = excess {
             let excess_ptr = end_of_block.sub(excess_size.block_count());
             self.free(excess_ptr as *mut u8, excess_size);
@@ -210,6 +236,7 @@ impl KernAlloctor {
         allocated as *mut u8
     }
 
+    /// Bumps the marker of currently used memory, freeing excess memory to enforce alignment.
     fn do_alloc(&mut self, layout: BlockLayout) -> Result<*mut u8, AllocError> {
         self.force_alignment(layout.align());
         let ptr = self.curr;
@@ -222,10 +249,11 @@ impl KernAlloctor {
     fn force_alignment(&mut self, size: BlockSize) {
         if !self.curr.is_aligned_to(size.byte_count()) {
             let bytes = self.curr.align_offset(size.byte_count());
-            // SAFETY: `self.curr` is always aligned to `align_of::<Block>`, as well as `BlockSize`
-            let size = unsafe { BlockSize::from_unchecked(bytes) };
+            // `self.curr` is always aligned to `align_of::<Block>`, as well as `BlockSize`
+            let size = BlockSize::from(bytes).unwrap();
 
             self.free(self.curr as *mut u8, size);
+            self.curr = unsafe { self.curr.add(size.block_count()) };
         }
     }
 
@@ -234,8 +262,6 @@ impl KernAlloctor {
             return Err(AllocError::OutOfMem);
         }
         let new_curr = self.curr.wrapping_add(size.block_count());
-        // If wrapped
-        // TODO,
         if (self.end..self.curr).contains(&new_curr) {
             return Err(AllocError::OutOfMem);
         }
@@ -243,8 +269,80 @@ impl KernAlloctor {
         Ok(())
     }
 
-    fn free(&mut self, _ptr: *mut u8, _size: BlockSize) {
-        unimplemented!();
+    fn free(&mut self, ptr: *mut u8, size: BlockSize) {
+        let mut freed = Self::create_freed_block(ptr, size);
+
+        match self.free_list {
+            Some(first) => {
+                let freed = unsafe { freed.as_mut() };
+                match freed.end_ptr().cmp(&first) {
+                    Ordering::Less => {
+                        freed.next = Some(first);
+                        self.free_list = Some(freed.into());
+                        return;
+                    }
+                    Ordering::Equal => {
+                        freed.merge(first);
+                        self.free_list = Some(freed.into());
+                        return;
+                    }
+                    Ordering::Greater => (),
+                }
+            }
+            None => {
+                self.free_list = Some(freed);
+                return;
+            }
+        };
+
+        let iter = self.free_list;
+        while let Some(mut current) = iter {
+            let Some(next) = unsafe { current.as_mut() }.next else {
+                break;
+            };
+            if (current.as_ptr()..next.as_ptr()).contains(&(ptr as *mut Block)) {
+                break;
+            }
+        }
+        Self::merge_adjacent_blocks(iter.unwrap(), freed);
+    }
+
+    fn create_freed_block(ptr: *mut u8, size: BlockSize) -> NonNull<Block> {
+        let ptr = ptr as *mut Block;
+        let block = unsafe { &mut *ptr };
+        block.size = size;
+        block.next = None;
+        NonNull::new(ptr).unwrap()
+    }
+
+    fn merge_adjacent_blocks(mut before: NonNull<Block>, mut freed: NonNull<Block>) {
+        let freed = unsafe { freed.as_mut() };
+        let before = unsafe { before.as_mut() };
+        match before.next {
+            Some(next) => {
+                if freed.end_ptr() == next {
+                    freed.merge(next);
+                } else {
+                    freed.next = Some(next);
+                }
+            }
+            _ => (),
+        }
+        if before.end_ptr() == freed.into() {
+            before.merge(freed.into());
+        } else {
+            before.next = Some(freed.into());
+        }
+    }
+
+    pub fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
+        self.free(
+            ptr,
+            BlockLayout::from(layout)
+                // The layout should be same as in alloc, if conversion have already succeeded once.
+                .expect("Free block layout creation should have succeeded")
+                .size(),
+        )
     }
 }
 
@@ -259,7 +357,7 @@ unsafe impl GlobalAlloc for GlobalKernAllocator {
             .expect("Heap should be initilized before alloc")
             .alloc(layout)
         {
-            Ok(ptr) => &mut *crate::memory_model::phys_to_virt::<u8>(&ptr),
+            Ok(ptr) => ptr,
             _ => core::ptr::null_mut(),
         }
     }
@@ -270,13 +368,7 @@ unsafe impl GlobalAlloc for GlobalKernAllocator {
             .as_mut()
             // Also, this indicates free before alloc, since alloc should have paniced first
             .expect("Heap should be initilized before free")
-            .free(
-                ptr,
-                BlockLayout::from(layout)
-                    // The layout should be same as in alloc, if conversion have already succeeded once.
-                    .expect("Free block layout creation should have succeeded")
-                    .size(),
-            )
+            .dealloc(ptr, layout)
     }
 }
 
@@ -303,12 +395,222 @@ pub fn init(kern_end: usize, ram_end: usize) {
 }
 
 pub fn alloc<T>() -> Result<Phys<T>, AllocError> {
-    let phys = ALLOCATOR
+    let virt = ALLOCATOR
         .0
         .lock()
         .as_mut()
         .expect("Heap should be initlized before alloc")
         .alloc(Layout::new::<T>())?
         .cast::<T>();
-    Ok(phys)
+    Ok(virt_to_phys(virt))
+}
+
+const_assert!(size_of::<Block>() == 8);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::hint::black_box;
+
+    #[test_case]
+    fn test_reduction_aligned_without_excess() {
+        let reduction = KernAlloctor::calc_reduction_for_layout(
+            0x1000 as *const u8,
+            BlockSize::from(8).unwrap(),
+            BlockSize::from(8).unwrap(),
+        );
+        assert_eq!(reduction.total.byte_count(), 8);
+        assert_eq!(reduction.excess, None);
+    }
+
+    #[test_case]
+    fn test_reduction_unaligned_without_excess() {
+        let reduction = KernAlloctor::calc_reduction_for_layout(
+            0x1008 as *const u8,
+            BlockSize::from(8).unwrap(),
+            BlockSize::from(16).unwrap(),
+        );
+        assert_eq!(reduction.total.byte_count(), 8);
+        assert_eq!(reduction.excess, None);
+    }
+
+    #[test_case]
+    fn test_reduction_unaligned_without_excess2() {
+        let reduction = KernAlloctor::calc_reduction_for_layout(
+            0x1008 as *const u8,
+            BlockSize::from(16).unwrap(),
+            BlockSize::from(8).unwrap(),
+        );
+        assert_eq!(reduction.total.byte_count(), 16);
+        assert_eq!(reduction.excess, None);
+    }
+
+    #[test_case]
+    fn test_reduction_aligned_with_excess() {
+        let reduction = KernAlloctor::calc_reduction_for_layout(
+            0x1008 as *const u8,
+            BlockSize::from(16).unwrap(),
+            BlockSize::from(32).unwrap(),
+        );
+        assert_eq!(reduction.total.byte_count(), 40);
+        assert_eq!(reduction.excess.unwrap().byte_count(), 24);
+    }
+
+    #[test_case]
+    fn test_reduction_unaligned_with_excess() {
+        let reduction = KernAlloctor::calc_reduction_for_layout(
+            0x1008 as *const u8,
+            BlockSize::from(32).unwrap(),
+            BlockSize::from(16).unwrap(),
+        );
+        assert_eq!(reduction.total.byte_count(), 40);
+        assert_eq!(reduction.excess.unwrap().byte_count(), 8);
+    }
+
+    #[test_case]
+    fn test_reduction_unaligned_with_excess() {
+        let reduction = KernAlloctor::calc_reduction_for_layout(
+            0x1008 as *const u8,
+            BlockSize::from(32).unwrap(),
+            BlockSize::from(16).unwrap(),
+        );
+        assert_eq!(reduction.total.byte_count(), 40);
+        assert_eq!(reduction.excess.unwrap().byte_count(), 8);
+    }
+
+    #[test_case]
+    fn test_reduction_unaligned_with_excess() {
+        let reduction = KernAlloctor::calc_reduction_for_layout(
+            0x1008 as *const u8,
+            BlockSize::from(32).unwrap(),
+            BlockSize::from(16).unwrap(),
+        );
+        assert_eq!(reduction.total.byte_count(), 40);
+        assert_eq!(reduction.excess.unwrap().byte_count(), 8);
+    }
+
+    #[repr(align(1024))]
+    struct AlignedBuffer([u8; 1024]);
+
+    impl AlignedBuffer {
+        fn as_allocator(&mut self) -> KernAlloctor {
+            KernAlloctor {
+                curr: (self.0.as_ptr()) as *mut Block,
+                end: unsafe { self.0.as_ptr().add(self.0.len()) } as *mut Block,
+                free_list: None,
+            }
+        }
+
+        fn ptr_to_block(&mut self, block_idx: usize) -> *mut u8 {
+            unsafe { self.0.as_mut_ptr().add(size_of::<Block>() * block_idx) }
+        }
+    }
+
+    #[test_case]
+    fn test_allocation() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let mut allocator = buf.as_allocator();
+        assert_eq!(
+            allocator.alloc(Layout::new::<u32>()).unwrap(),
+            buf.ptr_to_block(0)
+        );
+    }
+
+    #[test_case]
+    fn test_two_allocation() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let mut allocator = buf.as_allocator();
+        black_box(allocator.alloc(Layout::new::<u32>()).unwrap());
+        assert_eq!(
+            allocator.alloc(Layout::new::<u32>()).unwrap(),
+            buf.ptr_to_block(1)
+        );
+    }
+
+    #[test_case]
+    fn test_alloc_free() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let mut allocator = buf.as_allocator();
+        let layout = Layout::new::<u32>();
+        let ptr = allocator.alloc(layout).unwrap();
+        allocator.dealloc(ptr, layout);
+        let free = unsafe { &mut *allocator.free_list.unwrap().as_mut() };
+        assert_eq!(free as *mut Block, buf.ptr_to_block(0) as *mut Block);
+        assert_eq!(free.size, BlockSize::from(size_of::<Block>()).unwrap());
+    }
+
+    #[test_case]
+    fn test_double_alloc_free_unordered() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let mut allocator = buf.as_allocator();
+        let layout = Layout::new::<u32>();
+        let ptr1 = allocator.alloc(layout).unwrap();
+        let ptr2 = allocator.alloc(layout).unwrap();
+        allocator.dealloc(ptr2, layout);
+        allocator.dealloc(ptr1, layout);
+        let free = unsafe { &mut *allocator.free_list.unwrap().as_mut() };
+        assert_eq!(free as *mut Block, buf.ptr_to_block(0) as *mut Block);
+        assert_eq!(free.size, BlockSize::from(size_of::<Block>() * 2).unwrap());
+    }
+
+    #[test_case]
+    fn test_double_alloc_free_ordered() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let mut allocator = buf.as_allocator();
+        let layout = Layout::new::<u32>();
+        let ptr1 = allocator.alloc(layout).unwrap();
+        let ptr2 = allocator.alloc(layout).unwrap();
+        allocator.dealloc(ptr1, layout);
+        allocator.dealloc(ptr2, layout);
+        let free = unsafe { &mut *allocator.free_list.unwrap().as_mut() };
+        assert_eq!(free as *mut Block, buf.ptr_to_block(0) as *mut Block);
+        assert_eq!(free.size, BlockSize::from(size_of::<Block>() * 2).unwrap());
+    }
+
+    #[test_case]
+    fn test_alloc_needs_frees_excess() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let mut allocator = buf.as_allocator();
+
+        let l1 = Layout::new::<u32>();
+        let p1 = allocator.alloc(l1).unwrap();
+        black_box(p1);
+
+        let l2 = Layout::from_size_align(8, 16).unwrap();
+        let p2 = allocator.alloc(l2).unwrap();
+        assert_eq!(p2, buf.ptr_to_block(2).into());
+        assert_eq!(
+            allocator.free_list.unwrap().as_ptr(),
+            buf.ptr_to_block(1) as *mut Block
+        );
+    }
+
+    #[test_case]
+    fn test_free_before_head_with_gap() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let mut allocator = buf.as_allocator();
+
+        let l = Layout::new::<u32>();
+        let p1 = allocator.alloc(l).unwrap();
+
+        // Force a gap between p1 and p3
+        let p2 = allocator.alloc(l).unwrap();
+        black_box(p2);
+
+        let p3 = allocator.alloc(l).unwrap();
+
+        allocator.dealloc(p3, l);
+        allocator.dealloc(p1, l);
+        assert_eq!(
+            allocator.free_list.unwrap().as_ptr(),
+            buf.ptr_to_block(0) as *mut Block
+        );
+        assert_eq!(
+            unsafe { &mut *allocator.free_list.unwrap().as_mut() }
+                .next
+                .unwrap()
+                .as_ptr(),
+            buf.ptr_to_block(2) as *mut Block
+        );
+    }
 }

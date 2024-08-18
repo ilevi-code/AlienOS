@@ -21,6 +21,10 @@ pub fn phys_to_virt<T>(phys: &Phys<T>) -> *mut T {
     (phys.addr() + PHYS_TO_VIRT) as *mut T
 }
 
+pub fn virt_to_phys<T>(phys: *mut T) -> Phys<T> {
+    Phys::from(phys.addr() - PHYS_TO_VIRT)
+}
+
 pub fn phys_to_virt_mut<T>(phys: &Phys<T>) -> &'static mut T {
     let virt = phys_to_virt(phys);
     unsafe { &mut *virt }

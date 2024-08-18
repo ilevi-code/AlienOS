@@ -1,9 +1,12 @@
+#[cfg(test)]
 use crate::console::{print, println};
 
+#[cfg(test)]
 pub trait Testable {
     fn run(&self) -> ();
 }
 
+#[cfg(test)]
 impl<T> Testable for T
 where
     T: Fn(),

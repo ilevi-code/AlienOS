@@ -19,10 +19,12 @@ qemu: kernel.bin | fs.img
 		-device virtio-blk-device,drive=hd0 \
 		-device virtio-net-device,netdev=net0 -netdev user,id=net0
 
-kernel.bin: $(KERNEL) boot.elf
+kernel.bin: $(KERNEL) boot.elf FORCE
 	$(OBJCOPY) -O binary $< _kernel.bin
 	$(OBJCOPY) -O binary boot.elf _boot.bin
 	cat _boot.bin _kernel.bin > $@
+
+FORCE: ;
 
 boot.elf: boot.o bootstrap_mmu.o mmu.o
 	$(LD) -T boot.ld $^ -o $@
