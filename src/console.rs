@@ -1,8 +1,8 @@
 use core::cmp::min;
 use core::fmt;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicPtr, Ordering};
 
-pub(crate) static UART: AtomicUsize = AtomicUsize::new(0x9000000usize);
+pub(crate) static UART: AtomicPtr<u8> = AtomicPtr::new(0x9000000 as *mut u8);
 
 pub fn write(s: &str) {
     let uart0 = UART.load(Ordering::Acquire) as *mut u8;
