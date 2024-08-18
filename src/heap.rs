@@ -134,6 +134,7 @@ enum BlockMatch {
 
 use thiserror_no_std::Error;
 #[derive(Error, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub(crate) enum AllocError {
     #[error("{0}")]
     LayoutError(#[from] LayoutError),
@@ -262,7 +263,7 @@ impl KernAlloctor {
             return Err(AllocError::OutOfMem);
         }
         let new_curr = self.curr.wrapping_add(size.block_count());
-        if (self.end..self.curr).contains(&new_curr) {
+        if !(self.curr..=self.end).contains(&new_curr) {
             return Err(AllocError::OutOfMem);
         }
         self.curr = new_curr;
@@ -600,5 +601,39 @@ mod tests {
                 .as_ptr(),
             buf.ptr_to_block(2) as *mut Block
         );
+    }
+
+    #[test_case]
+    fn test_alloc_all() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let mut allocator = buf.as_allocator();
+        let l = Layout::new::<[u8; 512]>();
+        let p1 = allocator.alloc(l).unwrap();
+        let p2 = allocator.alloc(l).unwrap();
+        assert_eq!(p1, buf.ptr_to_block(0));
+        assert_eq!(p2, buf.ptr_to_block(512 / size_of::<Block>()));
+    }
+
+    #[test_case]
+    fn test_out_of_mem() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let mut allocator = buf.as_allocator();
+        let l = Layout::new::<[u8; 512]>();
+        let p1 = allocator.alloc(l).unwrap();
+        let p2 = allocator.alloc(l).unwrap();
+        black_box(p1);
+        black_box(p2);
+        assert_eq!(
+            allocator.alloc(Layout::new::<u8>()).unwrap_err(),
+            AllocError::OutOfMem
+        );
+    }
+
+    #[test_case]
+    fn test_too_big_alloc() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let mut allocator = buf.as_allocator();
+        let l = Layout::new::<[u8; 1025]>();
+        assert_eq!(allocator.alloc(l).unwrap_err(), AllocError::OutOfMem);
     }
 }
