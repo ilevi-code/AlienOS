@@ -5,7 +5,7 @@ use core::sync::atomic::{AtomicPtr, Ordering};
 pub(crate) static UART: AtomicPtr<u8> = AtomicPtr::new(0x9000000 as *mut u8);
 
 pub fn write(s: &str) {
-    let uart0 = UART.load(Ordering::Acquire) as *mut u8;
+    let uart0 = UART.load(Ordering::Acquire);
     for byte in s.bytes() {
         unsafe {
             uart0.write_volatile(byte);

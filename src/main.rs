@@ -29,6 +29,7 @@ const RAM_SIZE: usize = 0x2000_0000;
 const KERN_LINK: usize = 0xc000_0000;
 
 #[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn main(_dtb: *mut DeviceTree, _bootstrap_table: usize) -> ! {
     #[cfg(test)]
     {

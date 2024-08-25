@@ -18,9 +18,9 @@ struct BlockSize(NonZero<usize>);
 /// Keep allocation sizes aligned to multiple of `size_of::<Block>()`
 impl BlockSize {
     fn from(byte_size: usize) -> Option<BlockSize> {
-        Some(BlockSize {
-            0: NonZero::new(byte_size.align_up(size_of::<Block>()))?,
-        })
+        Some(BlockSize(NonZero::new(
+            byte_size.align_up(size_of::<Block>()),
+        )?))
     }
 
     fn block_count(&self) -> usize {
@@ -36,9 +36,7 @@ impl Sub for BlockSize {
     type Output = Option<BlockSize>;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        Some(BlockSize {
-            0: NonZero::new(self.0.get() - rhs.0.get())?,
-        })
+        Some(BlockSize(NonZero::new(self.0.get() - rhs.0.get())?))
     }
 }
 
@@ -108,7 +106,7 @@ impl Block {
         NonNull::new(ptr).unwrap()
     }
 
-    fn merge(&mut self, next: NonNull<Block>) -> () {
+    fn merge(&mut self, next: NonNull<Block>) {
         let next = unsafe { next.as_ref() };
         self.size += next.size;
         self.next = next.next;
@@ -157,23 +155,21 @@ impl KernAlloctor {
     fn look_for_freed_block(&mut self, layout: BlockLayout) -> Option<*mut u8> {
         let mut iter = self.free_list;
         let mut prev: Option<&mut Block> = None;
-        while let Some(current_ptr) = iter {
-            let current = unsafe { &mut *current_ptr.as_ptr() };
-            match current.check_fit(layout) {
+        while let Some(mut current_ptr) = iter {
+            match unsafe { current_ptr.as_mut() }.check_fit(layout) {
                 SizeFit::Misfit => (),
                 SizeFit::Excess => {
                     return Some(unsafe { self.extract_block(current_ptr.as_ptr(), layout) })
                 }
                 SizeFit::Exact => {
-                    match prev {
-                        Some(prev) => prev.next = current.next.take(),
-                        None => (),
-                    };
+                    if let Some(prev) = prev {
+                        prev.next = unsafe { current_ptr.as_mut() }.next.take()
+                    }
                     return Some(current_ptr.as_ptr() as *mut u8);
                 }
             }
-            iter = current.next;
-            prev = Some(current);
+            iter = unsafe { current_ptr.as_mut() }.next;
+            prev = Some(unsafe { current_ptr.as_mut() });
         }
         None
     }
@@ -185,8 +181,7 @@ impl KernAlloctor {
     ) -> AlignmentReduction {
         let aligned_size = BlockSize::from(size.byte_count().align_up(align.byte_count())).unwrap();
         let reduce_for_alignment = match BlockSize::from(ptr.align_offset(align.byte_count()))
-            .map(|offset| align - offset)
-            .flatten()
+            .and_then(|offset| align - offset)
         {
             None => {
                 return AlignmentReduction {
@@ -281,11 +276,7 @@ impl KernAlloctor {
         };
 
         let mut current = NonNull::from(&dummy);
-        loop {
-            let next = match unsafe { current.as_mut() }.next {
-                Some(next) => next,
-                None => break,
-            };
+        while let Some(next) = unsafe { current.as_mut() }.next {
             if (current.as_ptr()..next.as_ptr()).contains(&(ptr as *mut Block)) {
                 break;
             }
@@ -307,15 +298,12 @@ impl KernAlloctor {
     fn merge_adjacent_blocks(mut before: NonNull<Block>, mut freed: NonNull<Block>) {
         let freed = unsafe { freed.as_mut() };
         let before = unsafe { before.as_mut() };
-        match before.next {
-            Some(next) => {
-                if freed.end_ptr() == next {
-                    freed.merge(next);
-                } else {
-                    freed.next = Some(next);
-                }
+        if let Some(next) = before.next {
+            if freed.end_ptr() == next {
+                freed.merge(next);
+            } else {
+                freed.next = Some(next);
             }
-            _ => (),
         }
         if before.end_ptr() == freed.into() {
             before.merge(freed.into());
@@ -361,9 +349,7 @@ unsafe impl GlobalAlloc for GlobalKernAllocator {
     }
 }
 
-static ALLOCATOR: GlobalKernAllocator = GlobalKernAllocator {
-    0: SpinLock::new(None),
-};
+static ALLOCATOR: GlobalKernAllocator = GlobalKernAllocator(SpinLock::new(None));
 
 pub fn init(kern_end: usize, ram_end: usize) {
     let mut scale = "";

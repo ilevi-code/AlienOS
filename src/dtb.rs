@@ -14,6 +14,6 @@ pub struct DeviceTree {
 
 impl DeviceTree {
     fn total_size(&self) -> u32 {
-        return u32::from_be(self.total_size);
+        u32::from_be(self.total_size)
     }
 }
