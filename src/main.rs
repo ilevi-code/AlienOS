@@ -7,6 +7,7 @@
 mod arch;
 mod console;
 mod dtb;
+mod error;
 mod heap;
 mod kernel_location;
 mod memory_model;

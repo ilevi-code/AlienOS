@@ -2,11 +2,11 @@ use core::mem::size_of;
 use core::ops::Range;
 
 use crate::console::println;
+use crate::error::{Error, Result};
 use crate::heap;
 use crate::memory_model::phys_to_virt_mut;
 use crate::mmu::addr_parts::AddrParts;
 use crate::mmu::entry::{Entry, EntryKind, SeconLevelTable, Section};
-use crate::mmu::error::{MapError, Result};
 use crate::mmu::l2entry::L2EntryType;
 use crate::mmu::PagePerm;
 use crate::num::AlignUp;
@@ -28,7 +28,7 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
-    pub fn new() -> core::result::Result<Self, heap::AllocError> {
+    pub fn new() -> Result<Self> {
         Ok(Self {
             table: crate::memory_model::phys_to_virt_mut(&heap::alloc::<L1Table>()?),
         })
@@ -51,7 +51,7 @@ impl<'a> TranslationTable<'a> {
 
             match entry.get_type() {
                 EntryKind::Unmapped => (),
-                _ => return Err(MapError::Remap),
+                _ => return Err(Error::Remap),
             };
 
             entry.set_section(phys, perm, 0);
@@ -81,11 +81,11 @@ impl<'a> TranslationTable<'a> {
         let l2_table = match entry.get_type() {
             EntryKind::SeconLevelTable(l2_table) => phys_to_virt_mut(&l2_table),
             EntryKind::Unmapped => self.create_l2table(addr.l1_index)?,
-            _ => return Err(MapError::Remap),
+            _ => return Err(Error::Remap),
         };
 
         if l2_table[addr.l2_index].get_type() != L2EntryType::Unmapped {
-            return Err(MapError::Remap);
+            return Err(Error::Remap);
         }
 
         l2_table[addr.l2_index].set_phys(phys, L2EntryType::Small);
@@ -99,13 +99,11 @@ impl<'a> TranslationTable<'a> {
 
     /// Makes sure that the second level table at `l1_index` is mapped and accessible.
     fn create_l2table(&mut self, l1_index: usize) -> Result<&mut SeconLevelTable> {
-        let Ok(new_l2_table) = heap::alloc::<SeconLevelTable>() else {
-            return Err(MapError::AllocError);
-        };
+        let new_l2_table = heap::alloc::<SeconLevelTable>()?;
         let entry = &mut self.table[l1_index];
         match entry.get_type() {
             EntryKind::Unmapped => (),
-            _ => return Err(MapError::Remap),
+            _ => return Err(Error::Remap),
         };
         entry.set_l2_table(new_l2_table, 0);
         // TODO Ok(phys_to_virt(frame))
