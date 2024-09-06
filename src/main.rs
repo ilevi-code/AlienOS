@@ -48,7 +48,8 @@ pub unsafe extern "C" fn main(_dtb: *mut DeviceTree, _bootstrap_table: usize) ->
 fn init_mmu_fine_grained() {
     let kern_location = get_kernel_location();
     let mut kern_table = TranslationTable::from_base(get_ttbr0());
-    kern_table.unmap(kern_table.next_entry(kern_location.end).unwrap()..0xffff_ffff);
-    // kern_table.map_device()
+    kern_table.unmap(memory_model::DEVICE_VIRT..0xffff_ffff);
+
+    kern_table.map_device()
     // builder.apply();
 }
