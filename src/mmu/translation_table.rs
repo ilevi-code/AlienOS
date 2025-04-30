@@ -164,7 +164,7 @@ impl<'a> TranslationTable<'a> {
                 }
                 EntryKind::SeconLevelTable(l2_table) => {
                     let l2_table = unsafe { &*memory_model::phys_to_virt(&l2_table) };
-                    for entry in l2_table[parts.l2_index..] {
+                    for entry in &l2_table[parts.l2_index..] {
                         if entry.get_type() != L2EntryType::Unmapped {
                             addr += SMALL_PAGE_SIZE;
                         } else {
@@ -214,8 +214,12 @@ impl<'a> TranslationTable<'a> {
                 );
                 break Some(start as *mut T);
             } else {
-                candidate = self.get_next_region(candidate_end)?;
+                candidate = self.seek_next_region(candidate_end)?;
             }
         }
+    }
+
+    pub fn seek_next_region(&self, _seek_after: usize) -> Option<usize> {
+        todo!();
     }
 }
