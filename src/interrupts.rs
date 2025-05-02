@@ -1,9 +1,7 @@
 use core::ptr::addr_of;
 extern "C" {
     static interrupt_table_start: u32;
-    static interrupt_table_end: u32;
-    static mut data_abort_handler_pointer: *mut extern "C" fn();
-    // static mut data_abort_handler_pointer: usize;
+    static mut data_abort_handler_pointer: *mut extern "C" fn(usize);
 }
 
 core::arch::global_asm!(
@@ -11,27 +9,29 @@ core::arch::global_asm!(
     ".global interrupt_table_start",
     "interrupt_table_start:",
     "",
-    "nop",
-    "nop",
-    "nop",
-    "nop",
-    "ldr pc, data_abort_handler_pointer",
-    ".global data_abort_handler_pointer",
-    "data_abort_handler_pointer:",
-    ".word 0x0",
+    "nop",                   // reset handler
+    "nop",                   // undefined instruction handler
+    "nop",                   // svc handler
+    "nop",                   // prefetch abort
+    "b _data_abort_handler", // data abort
+    "nop",                   // unused
+    "nop",                   // IRQ
+    "nop",                   // FIQ
     "",
     "",
-    ".global interrupt_table_end",
-    "interrupt_table_end:",
     ".global _data_abort_handler",
     "_data_abort_handler:",
     "sub lr, lr, #4",
     "srsdb #23!", // push LR_abt and CPSR_abt to the stack.
     "push {{r0-r12}}",
     "sub r0, lr, #4",
-    "bl data_abort_handler",
+    "ldr r1, data_abort_handler_pointer",
+    "blx r1",
     "pop {{r0-r12}}",
     "rfeia sp!", // load LR and SPSR from the stack
+    ".global data_abort_handler_pointer",
+    "data_abort_handler_pointer:",
+    ".word 0x0",
 );
 extern "C" {
     fn _data_abort_handler();
@@ -60,33 +60,55 @@ fn set_high_exception_vector_address(address: usize) {
     }
 }
 
-pub(crate) fn init_interrupt_handler() {
+fn set_data_abort_handler(handler: extern "C" fn(usize)) {
     unsafe {
-        data_abort_handler_pointer = _data_abort_handler as *mut extern "C" fn();
+        data_abort_handler_pointer = handler as *mut extern "C" fn(usize);
     }
-    unsafe {
-        let p: *const u32 = &interrupt_table_start;
-        crate::console::println!("table start at 0x{:?}", p);
-    }
+}
 
+pub(crate) fn init_interrupt_handler() {
+    set_data_abort_handler(data_abort_handler);
     // TODO setup stack for:
     // abort (mode 0b10111)
     // FIQ (mode 0b10001)
     // IRQ (mode 0b10010)
-    //
-    // ldr r0, =_stack_for_mode
-    // msr CPSR_c, #0x18    ; Switch to IRQ mode
-    // mov sp, r0
-    // msr CPSR_c, #0x13    ; switch back to SVC mode (kernel mode)
-    unsafe {
-        core::arch::asm!("msr CPSR_c, #0x17");
-        core::arch::asm!("msr CPSR_c, #0x13");
+    // currently, SP_abrt is 0, so the stack grow down from 0xffff_ffff.
+    set_high_exception_vector_address(addr_of!(interrupt_table_start) as usize);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::spinlock::SpinLock;
+
+    static ABORT_INFO: SpinLock<(usize, usize)> = SpinLock::new((0, 0));
+
+    extern "C" fn dummy_data_abort_handler(pc: usize) {
+        let mut abort_info = ABORT_INFO.lock();
+        abort_info.0 = pc;
+        abort_info.1 = read_fault_register();
     }
 
-    set_high_exception_vector_address((unsafe { &interrupt_table_start } as *const u32) as usize);
+    #[test_case]
+    fn test_data_abort() {
+        init_interrupt_handler();
+        set_data_abort_handler(dummy_data_abort_handler);
 
-    unsafe {
         let addr: usize = 0xaeadbeef;
-        core::arch::asm!("str r1,[{addr}]", addr = in(reg) addr);
+        let pc: usize;
+
+        unsafe {
+            core::arch::asm!(
+                // pc is loaded 8 bytes ahead of current instruction
+                "sub {},pc,#4",
+                "str r1,[{}]",
+                out(reg) pc,
+                in(reg) addr
+            );
+        }
+
+        let abort_info: (usize, usize) = *ABORT_INFO.lock();
+        assert_eq!(abort_info.0, pc);
+        assert_eq!(abort_info.1, addr);
     }
 }
