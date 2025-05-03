@@ -41,11 +41,9 @@ translation_table_t* mmu_init()
     // Use 1:1 mapping for the the bootstrap code
     map_sections(&bootstrap_table, start, start, bootstrap_size, SECTION_AP(PERM_NONE));
 
-    // Map 1 GB of phys memory
-    map_sections(&bootstrap_table, 0x80000000, 0x40000000, 0x40000000, SECTION_AP(PERM_NONE));
-
     // Map the kernel to the higher 1GB
-    map_sections(&bootstrap_table, 0xc0000000, 0x40000000, 0x40000000, SECTION_AP(PERM_NONE));
+    map_sections(&bootstrap_table, 0xc0000000, 0x40000000, 0x10000000, SECTION_AP(PERM_NONE));
+    map_sections(&bootstrap_table, 0xfff00000, 0x48000000, SECTION_SIZE, SECTION_AP(PERM_NONE));
 
     set_ttbr0(&bootstrap_table);
 
