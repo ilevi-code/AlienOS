@@ -12,11 +12,17 @@ impl OverflowingAdd for usize {
 
 trait Integer {
     fn zero() -> Self;
+
+    fn max() -> Self;
 }
 
 impl Integer for usize {
     fn zero() -> Self {
         0
+    }
+
+    fn max() -> Self {
+        usize::MAX
     }
 }
 
@@ -35,18 +41,47 @@ where
 
 pub trait AlignUp {
     fn align_up(self, align: Self) -> Self;
+
+    fn align_up_overflowing(self, align: Self) -> (Self, bool)
+    where
+        Self: Sized;
 }
 
 impl<T> AlignUp for T
 where
-    T: Integer + Rem<Output = T> + Sub<Output = T> + Add<Output = T> + PartialEq + Copy,
+    T: Integer
+        + Rem<Output = T>
+        + Sub<Output = T>
+        + Add<Output = T>
+        + PartialEq
+        + Copy
+        + OverflowingAdd
+        + core::fmt::LowerHex,
 {
     fn align_up(self, align: Self) -> Self {
         let rem = self % align;
         if rem == Self::zero() {
             self
         } else {
-            self - rem + align
+            // (self - rem).checked_add(align).value_or(0xffffffff)
+            let (value, overflow) = (self - rem).overflowing_add(align);
+            if overflow {
+                Self::max()
+            } else {
+                value
+            }
+        }
+    }
+
+    fn align_up_overflowing(self, align: Self) -> (Self, bool)
+    where
+        Self: Sized,
+    {
+        let rem = self % align;
+        if rem == Self::zero() {
+            (self, false)
+        } else {
+            (self - rem).overflowing_add(align)
         }
     }
 }

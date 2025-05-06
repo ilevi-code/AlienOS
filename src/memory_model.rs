@@ -17,6 +17,9 @@ const MEM_START: usize = 0x4000_0000;
 const PHYS_MAP_START: usize = 0x8000_0000;
 const PHYS_TO_VIRT: usize = PHYS_MAP_START - MEM_START;
 
+// 16MB left empty - to be mapped as devices
+pub const DEVICE_VIRT: usize = 0xfe00_0000;
+
 pub fn phys_to_virt<T>(phys: &Phys<T>) -> *mut T {
     (phys.addr() + PHYS_TO_VIRT) as *mut T
 }

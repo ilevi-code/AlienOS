@@ -20,6 +20,7 @@ qemu: kernel.bin | fs.img
 		-device virtio-net-device,netdev=net0 -netdev user,id=net0
 
 kernel.bin: $(KERNEL) boot.elf FORCE
+	$(OBJCOPY) --only-keep-debug $< debug.elf
 	$(OBJCOPY) -O binary $< _kernel.bin
 	$(OBJCOPY) -O binary boot.elf _boot.bin
 	cat _boot.bin _kernel.bin > $@

@@ -15,14 +15,29 @@ pub(super) struct L2Entry {
 }
 
 impl L2Entry {
+    const BUFFERABLE: usize = 1 << 2;
+    const CACHABLE: usize = 1 << 3;
+
     #[inline]
-    pub fn set_phys(&mut self, phys: usize, entry_type: L2EntryType) {
+    pub fn set_phys(
+        &mut self,
+        phys: usize,
+        entry_type: L2EntryType,
+        cachable: bool,
+        bufferable: bool,
+    ) {
         let mask = match entry_type {
             L2EntryType::Unmapped => return,
             L2EntryType::Small => 0xfffff000,
             L2EntryType::Large => 0xffff0000,
         };
         self.value = phys & mask;
+        if cachable {
+            self.value |= L2Entry::CACHABLE;
+        }
+        if bufferable {
+            self.value |= L2Entry::BUFFERABLE;
+        }
     }
 
     #[inline]

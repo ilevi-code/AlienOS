@@ -3,14 +3,15 @@ use core::ops::Range;
 
 use crate::console::println;
 use crate::error::{Error, Result};
-use crate::heap;
 use crate::memory_model::phys_to_virt_mut;
 use crate::mmu::addr_parts::AddrParts;
 use crate::mmu::entry::{Entry, EntryKind, SeconLevelTable, Section};
 use crate::mmu::l2entry::L2EntryType;
 use crate::mmu::PagePerm;
-use crate::num::AlignUp;
+use crate::num::{AlignDown, AlignUp};
+use crate::phys::Phys;
 use crate::step_range::StepRange;
+use crate::{heap, memory_model};
 
 pub const SMALL_PAGE_SIZE: usize = 4096;
 const L1_ENTRY_COUNT: usize = 4096;
@@ -59,7 +60,15 @@ impl<'a> TranslationTable<'a> {
         Ok(())
     }
 
-    pub fn map(&mut self, virt: usize, phys: usize, len: usize, perm: PagePerm) -> Result<()> {
+    pub fn map(
+        &mut self,
+        virt: usize,
+        phys: usize,
+        len: usize,
+        perm: PagePerm,
+        cachable: bool,
+        bufferable: bool,
+    ) -> Result<()> {
         let virt_range = StepRange::new(virt, virt + len, SMALL_PAGE_SIZE);
         let phys_range = StepRange::new(phys, phys + len, SMALL_PAGE_SIZE);
 
@@ -70,12 +79,19 @@ impl<'a> TranslationTable<'a> {
 
         for (virt, phys) in virt_range.zip(phys_range) {
             let addr = AddrParts::from(virt);
-            self.map_once(&addr, phys, perm)?;
+            self.map_once(&addr, phys, perm, cachable, bufferable)?;
         }
         Ok(())
     }
 
-    fn map_once(&mut self, addr: &AddrParts, phys: usize, perm: PagePerm) -> Result<()> {
+    fn map_once(
+        &mut self,
+        addr: &AddrParts,
+        phys: usize,
+        perm: PagePerm,
+        cachable: bool,
+        bufferable: bool,
+    ) -> Result<()> {
         let entry = self.get_l1(addr.l1_index);
 
         let l2_table = match entry.get_type() {
@@ -88,7 +104,7 @@ impl<'a> TranslationTable<'a> {
             return Err(Error::Remap);
         }
 
-        l2_table[addr.l2_index].set_phys(phys, L2EntryType::Small);
+        l2_table[addr.l2_index].set_phys(phys, L2EntryType::Small, cachable, bufferable);
         l2_table[addr.l2_index].set_perm(perm);
         Ok(())
     }
@@ -132,15 +148,37 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
-    pub fn next_entry(&self, addr: usize) -> Option<usize> {
-        let parts = AddrParts::from(addr);
-        let entry = &self.table[parts.l1_index];
-        match entry.get_type() {
-            EntryKind::Unmapped => None,
-            EntryKind::Section(_) => Some(addr.align_up(size_of::<Section>())),
-            EntryKind::SeconLevelTable(_) => unimplemented!(),
-            _ => panic!("Unsupported entry type"),
+    pub fn seek_hole(&self, addr: usize) -> Option<usize> {
+        let mut addr = addr.align_down(SMALL_PAGE_SIZE);
+        loop {
+            let parts = AddrParts::from(addr);
+            let entry = &self.table[parts.l1_index];
+            match entry.get_type() {
+                EntryKind::Unmapped => return Some(addr),
+                EntryKind::Section(_) => {
+                    if parts.l2_index == 0 {
+                        addr += size_of::<Section>();
+                    } else {
+                        addr = addr.align_up(size_of::<Section>());
+                    }
+                }
+                EntryKind::SeconLevelTable(l2_table) => {
+                    let l2_table = unsafe { &*memory_model::phys_to_virt(&l2_table) };
+                    for entry in &l2_table[parts.l2_index..] {
+                        if entry.get_type() != L2EntryType::Unmapped {
+                            addr += SMALL_PAGE_SIZE;
+                        } else {
+                            return Some(addr);
+                        }
+                    }
+                }
+                _ => panic!("Unsupported entry type"),
+            };
         }
+    }
+
+    pub fn seek_mapped(&self, _addr: usize) -> Option<usize> {
+        todo!();
     }
 
     pub fn unmap(&mut self, range: Range<usize>) {
@@ -156,5 +194,32 @@ impl<'a> TranslationTable<'a> {
                 _ => panic!("Unsupported entry type"),
             }
         }
+    }
+
+    pub fn map_device<T>(&mut self, device: Phys<T>) -> Option<*mut T> {
+        let start = device.addr().align_down(SMALL_PAGE_SIZE);
+        let end = (device.addr() + size_of::<T>()).align_up(SMALL_PAGE_SIZE);
+        let size = end - start;
+        let mut candidate = memory_model::DEVICE_VIRT;
+        loop {
+            let candidate_end = self.seek_hole(candidate)?;
+            if (candidate_end - candidate) >= size {
+                self.map(
+                    candidate,
+                    device.addr(),
+                    size,
+                    PagePerm::KernOnly,
+                    false,
+                    true,
+                );
+                break Some(start as *mut T);
+            } else {
+                candidate = self.seek_next_region(candidate_end)?;
+            }
+        }
+    }
+
+    pub fn seek_next_region(&self, _seek_after: usize) -> Option<usize> {
+        todo!();
     }
 }
