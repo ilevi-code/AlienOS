@@ -32,7 +32,12 @@ impl L2Entry {
             L2EntryType::Small => 0xfffff000,
             L2EntryType::Large => 0xffff0000,
         };
-        self.value = phys & mask;
+        let type_bits = match entry_type {
+            L2EntryType::Unmapped => 0,
+            L2EntryType::Large => 1,
+            L2EntryType::Small => 2,
+        };
+        self.value = (phys & mask) | type_bits;
         if cachable {
             self.value |= L2Entry::CACHABLE;
         }
