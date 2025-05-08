@@ -37,9 +37,8 @@ core::arch::global_asm!(
     ".word 0x0",
     "",
     "_irq_handler:",
-    "nop",
-    "sub lr, lr, #4", // The lr registers will point to 8 bytes after the faulting instruction
-    "srsdb #0x12!",   // push LR_abt and CPSR_abt to the stack.
+    "sub lr, lr, #4", // The lr registers will point to 4 bytes after the faulting instruction
+    "srsdb #0x12!",   // push LR_irq and CPSR_irq to the stack.
     "push {{r0-r12}}",
     "mov r0, sp",
     "ldr r1, irq_handler_pointer",
@@ -64,7 +63,7 @@ fn read_fault_register() -> usize {
     fault_address
 }
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 extern "C" fn data_abort_handler(reg_set: *mut RegSet) {
     crate::console::println!(
         "fault acessing address 0x{:x} from 0x{:x}",
@@ -143,19 +142,12 @@ mod timer {
 }
 
 extern "C" fn irq_handler(reg_set: *mut RegSet) {
-    let int_num;
-    unsafe {
-        let ptr = 0x0801000c as *const u32;
-        int_num = *ptr;
-    }
+    let gicc = super::gic::get_gicc();
+    let int_num = gicc.current_interrupt_number();
     crate::console::println!("irq number #{}!\n", int_num);
     let mut timer = timer::VirtualCounter;
     timer.arm(timer.frequency());
-    // write to GICC_EOIR
-    unsafe {
-        let ptr = 0x08010010 as *mut u32;
-        *ptr = int_num
-    }
+    gicc.signal_end(int_num);
 }
 
 pub(crate) fn init_interrupt_handler() {
@@ -171,20 +163,19 @@ pub(crate) fn init_interrupt_handler() {
         irq_handler_pointer = irq_handler as *mut extern "C" fn(*mut RegSet);
     }
     unsafe {
-        // enable signaling to CPU
-        let gicc_ctlr: *mut u32 = 0x08010000 as *mut u32;
-        *gicc_ctlr = 1;
-        // priority mask (0xf0 = allow all)
-        let gicc_pmr: *mut u32 = 0x08010004 as *mut u32;
-        *gicc_pmr = 0xf0;
+        let gicc = super::gic::get_gicc();
+        gicc.enable_singaling_to_cpu();
+        gicc.set_prio_mask(super::gic::Gicc::ALLOW_ALL);
 
-        // enable forwarding interrupts
-        let gicd_ctlr: *mut u32 = 0x08000000 as *mut u32;
-        *gicd_ctlr = 1;
+        // let gicd = &mut *super::gic::GICD.load(core::sync::atomic::Ordering::Acquire);
+        // // enable forwarding interrupts
+        // gicd.ctlr = 1;
 
-        // GICD_ISENABLER: IRQ 27 -> ISENABLER1 (IRQ 32..63)
-        let gicd_isenabler = (0x08000000 + 0x100) as *mut u32; // GICD_ISENABLER1 = base + 0x104
-        *gicd_isenabler = 1 << 27;
+        // // GICD_ISENABLER: IRQ 27 -> ISENABLER1 (IRQ 32..63)
+        // gicd.isenabler[0] = 1 << 27;
+        let gicd = super::gic::get_gicd();
+        gicd.enable_forarding();
+        gicd.enable_interrupt(27);
     }
 
     unsafe {
