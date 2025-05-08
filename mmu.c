@@ -9,14 +9,25 @@ inline uint32_t get_ttbr0()
     return ttbr;
 }
 
-void set_ttbr0(translation_table_t* table)
+void set_ttbr0(void* table)
 {
     asm volatile("MCR p15, 0, %0, c2, c0, 0" : : "r"(table));
 }
 
-void set_ttbr1(translation_table_t* table)
+void set_ttbr1(void* table)
 {
     asm volatile("MCR p15, 0, %0, c2, c0, 1" : : "r"(table));
+}
+
+uint32_t get_ttbcr()
+{
+    uint32_t ttbcr;
+    asm volatile("MRC p15, 0, %0, c2, c0, 2" : "=r"(ttbcr));
+}
+
+void set_ttbcr(uint32_t ttbcr)
+{
+    asm volatile("MCR p15, 0, %0, c2, c0, 2" : : "r"(ttbcr));
 }
 
 void set_dacr(uint dacr)

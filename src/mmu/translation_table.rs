@@ -4,7 +4,7 @@ use core::ops::Range;
 use crate::console::println;
 use crate::error::{Error, Result};
 use crate::memory_model::phys_to_virt_mut;
-use crate::mmu::addr_parts::AddrParts;
+use crate::mmu::addr_parts::{AddrParts, Offset};
 use crate::mmu::entry::{Entry, EntryKind, SeconLevelTable, Section};
 use crate::mmu::l2entry::L2EntryType;
 use crate::mmu::PagePerm;
@@ -14,24 +14,45 @@ use crate::step_range::StepRange;
 use crate::{heap, memory_model};
 
 pub const SMALL_PAGE_SIZE: usize = 4096;
-const L1_ENTRY_COUNT: usize = 4096;
+const L1_ENTRY_COUNT: usize = 2096;
 
 type L1Table = [Entry; L1_ENTRY_COUNT];
 
+enum AddressSpace {
+    Kernel,
+    User,
+}
+
 pub struct TranslationTable<'a> {
     table: &'a mut L1Table,
+    address_space: AddressSpace,
 }
 
 impl<'a> TranslationTable<'a> {
-    pub fn from_base(base: usize) -> Self {
+    pub fn get_kernel() -> Self {
+        let base = crate::arch::get_ttbr1();
         Self {
             table: unsafe { &mut *(base as *mut L1Table) },
+            address_space: AddressSpace::Kernel,
         }
     }
 
-    pub fn new() -> Result<Self> {
+    fn get_offset(&self, addr: usize) -> Result<Offset> {
+        let range = match self.address_space {
+            AddressSpace::Kernel => 0x8000_0000..0xffff_ffff,
+            AddressSpace::User => 0x0000_0000..0x7fff_ffff,
+        };
+        if !range.contains(&addr) {
+            Err(Error::OutOfRange)
+        } else {
+            Ok(Offset(addr - range.start))
+        }
+    }
+
+    pub fn new(address_space: AddressSpace) -> Result<Self> {
         Ok(Self {
             table: crate::memory_model::phys_to_virt_mut(&heap::alloc::<L1Table>()?),
+            address_space,
         })
     }
 
@@ -47,7 +68,7 @@ impl<'a> TranslationTable<'a> {
         let phys_range = StepRange::new(phys, phys + (section_count * SECTION_SIZE), SECTION_SIZE);
 
         for (virt, phys) in virt_range.zip(phys_range) {
-            let parts = AddrParts::from(virt);
+            let parts = AddrParts::from(self.get_offset(virt)?);
             let entry = self.get_l1(parts.l1_index);
 
             match entry.get_type() {
@@ -78,7 +99,7 @@ impl<'a> TranslationTable<'a> {
         );
 
         for (virt, phys) in virt_range.zip(phys_range) {
-            let addr = AddrParts::from(virt);
+            let addr = AddrParts::from(self.get_offset(virt)?);
             self.map_once(&addr, phys, perm, cachable, bufferable)?;
         }
         Ok(())
@@ -129,12 +150,16 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
-    pub fn apply(self) {
+    pub fn apply_kernel(self) {
+        crate::arch::set_ttbr1(self.table.as_ptr() as usize);
+    }
+
+    pub fn apply_user(&self) {
         crate::arch::set_ttbr0(self.table.as_ptr() as usize);
     }
 
     pub fn virt_to_phys(&self, virt: usize) -> Option<usize> {
-        let parts = AddrParts::from(virt);
+        let parts = AddrParts::from(self.get_offset(virt).ok()?);
         let entry = &self.table[parts.l1_index];
         match entry.get_type() {
             EntryKind::Unmapped => None,
@@ -151,7 +176,7 @@ impl<'a> TranslationTable<'a> {
     pub fn seek_hole(&self, addr: usize) -> Option<usize> {
         let mut addr = addr.align_down(SMALL_PAGE_SIZE);
         loop {
-            let parts = AddrParts::from(addr);
+            let parts = AddrParts::from(self.get_offset(addr).ok()?);
             let entry = &self.table[parts.l1_index];
             match entry.get_type() {
                 EntryKind::Unmapped => return Some(addr),
@@ -185,7 +210,10 @@ impl<'a> TranslationTable<'a> {
         const SECTION_SIZE: usize = size_of::<Section>();
         let range = StepRange::align_from(range, SECTION_SIZE);
         for addr in range {
-            let parts = AddrParts::from(addr);
+            let Ok(offset) = self.get_offset(addr) else {
+                return;
+            };
+            let parts = AddrParts::from(offset);
             let entry = &mut self.table[parts.l1_index];
             match entry.get_type() {
                 EntryKind::Unmapped => (),

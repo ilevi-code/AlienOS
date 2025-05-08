@@ -1,3 +1,6 @@
+// Offset an on address in the current table
+pub(super) struct Offset(pub(super) usize);
+
 pub(super) struct AddrParts {
     pub(super) l1_index: usize,
     pub(super) l2_index: usize,
@@ -10,12 +13,12 @@ impl AddrParts {
     }
 }
 
-impl From<usize> for AddrParts {
-    fn from(virt: usize) -> Self {
+impl From<Offset> for AddrParts {
+    fn from(offset: Offset) -> Self {
         Self {
-            l1_index: virt >> 20,
-            l2_index: (virt >> 12) & 0xff,
-            page_offset: virt & 0xfff,
+            l1_index: offset.0 >> 20,
+            l2_index: (offset.0 >> 12) & 0xff,
+            page_offset: offset.0 & 0xfff,
         }
     }
 }
