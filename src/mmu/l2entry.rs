@@ -17,6 +17,7 @@ pub(super) struct L2Entry {
 impl L2Entry {
     const BUFFERABLE: usize = 1 << 2;
     const CACHABLE: usize = 1 << 3;
+    const PAGE_PERM_SHIFT: usize = 4;
 
     #[inline]
     pub fn set_phys(
@@ -54,14 +55,14 @@ impl L2Entry {
     pub(super) fn get_type(&self) -> L2EntryType {
         match self.value & 0b11 {
             0 => L2EntryType::Unmapped,
-            1 => L2EntryType::Small,
-            _ => L2EntryType::Large,
+            1 => L2EntryType::Large,
+            _ => L2EntryType::Small,
         }
     }
 
     #[inline]
     pub(super) fn set_perm(&mut self, perm: PagePerm) {
-        self.value |= perm.translate()
+        self.value |= perm.translate() << Self::PAGE_PERM_SHIFT;
     }
 }
 
