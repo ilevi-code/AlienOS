@@ -49,6 +49,14 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
+    fn offset_to_virt(&self, offset: Offset) -> usize {
+        let address_range_base = match self.address_space {
+            AddressSpace::Kernel => 0x8000_0000,
+            AddressSpace::User => 0x0000_0000,
+        };
+        address_range_base + offset.0
+    }
+
     pub fn new(address_space: AddressSpace) -> Result<Self> {
         Ok(Self {
             table: crate::memory_model::phys_to_virt_mut(&heap::alloc::<L1Table>()?),
@@ -173,13 +181,14 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
-    pub fn seek_hole(&self, addr: usize) -> Option<usize> {
+    pub fn seek_hole(&self, addr: usize) -> Result<Offset> {
         let mut addr = addr.align_down(SMALL_PAGE_SIZE);
         loop {
-            let parts = AddrParts::from(self.get_offset(addr).ok()?);
+            let offset = self.get_offset(addr)?;
+            let parts = AddrParts::from(offset);
             let entry = &self.table[parts.l1_index];
             match entry.get_type() {
-                EntryKind::Unmapped => return Some(addr),
+                EntryKind::Unmapped => return Ok(offset),
                 EntryKind::Section(_) => {
                     if parts.l2_index == 0 {
                         addr += size_of::<Section>();
@@ -193,7 +202,7 @@ impl<'a> TranslationTable<'a> {
                         if entry.get_type() != L2EntryType::Unmapped {
                             addr += SMALL_PAGE_SIZE;
                         } else {
-                            return Some(addr);
+                            return Ok(self.get_offset(addr)?);
                         }
                     }
                 }
@@ -224,26 +233,22 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
-    pub fn map_device<T>(&mut self, device: Phys<T>) -> Option<*mut T> {
+    pub fn map_device<T>(&mut self, device: Phys<T>) -> Result<*mut T> {
         let start = device.addr().align_down(SMALL_PAGE_SIZE);
         let end = (device.addr() + size_of::<T>()).align_up(SMALL_PAGE_SIZE);
         let size = end - start;
         let mut candidate = memory_model::DEVICE_VIRT;
         loop {
-            let candidate_end = self.seek_hole(candidate)?;
-            if (candidate_end - candidate) >= size {
-                self.map(
-                    candidate,
-                    device.addr(),
-                    size,
-                    PagePerm::KernOnly,
-                    false,
-                    true,
-                );
-                break Some(start as *mut T);
-            } else {
-                candidate = self.seek_next_region(candidate_end)?;
-            }
+            let candidate = self.offset_to_virt(self.seek_hole(candidate)?);
+            self.map(
+                candidate,
+                device.addr(),
+                size,
+                PagePerm::KernOnly,
+                false,
+                true,
+            )?;
+            break Ok(candidate as *mut T);
         }
     }
 

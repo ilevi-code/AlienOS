@@ -1,4 +1,5 @@
 // Offset an on address in the current table
+#[derive(Clone, Copy)]
 pub(super) struct Offset(pub(super) usize);
 
 pub(super) struct AddrParts {
