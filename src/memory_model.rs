@@ -14,7 +14,7 @@ use crate::phys::Phys;
 
 // Memory given by qemu
 const MEM_START: usize = 0x4000_0000;
-const PHYS_MAP_START: usize = 0x8000_0000;
+const PHYS_MAP_START: usize = 0xc000_0000;
 const PHYS_TO_VIRT: usize = PHYS_MAP_START - MEM_START;
 
 // 16MB left empty - to be mapped as devices
@@ -24,11 +24,15 @@ pub fn phys_to_virt<T>(phys: &Phys<T>) -> *mut T {
     (phys.addr() + PHYS_TO_VIRT) as *mut T
 }
 
-pub fn virt_to_phys<T>(phys: *mut T) -> Phys<T> {
+pub fn virt_to_phys<T>(phys: *const T) -> Phys<T> {
     Phys::from(phys as usize - PHYS_TO_VIRT)
 }
 
 pub fn phys_to_virt_mut<T>(phys: &Phys<T>) -> &'static mut T {
     let virt = phys_to_virt(phys);
     unsafe { &mut *virt }
+}
+
+pub fn virt_to_phys_mut<T>(phys: *mut T) -> Phys<T> {
+    Phys::from(phys as usize - PHYS_TO_VIRT)
 }
