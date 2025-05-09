@@ -15,7 +15,7 @@ core::arch::global_asm!(
     "",
     "nop",                   // reset handler
     "nop",                   // undefined instruction handler
-    "nop",                   // svc handler
+    "b _svc_handler",        // svc handler
     "nop",                   // prefetch abort
     "b _data_abort_handler", // data abort
     "nop",                   // unused
@@ -48,11 +48,26 @@ core::arch::global_asm!(
     ".global irq_handler_pointer",
     "irq_handler_pointer:",
     ".word 0x0",
+    "",
+    "_svc_handler:",
+    // check this
+    "sub lr, lr, #4", // The lr registers will point to 4 bytes after the faulting instruction
+    "srsdb #0x13!",   // push LR_svc and CPSR_svc to the stack.
+    "push {{r0-r12}}",
+    "mov r0, sp",
+    "ldr r1, svc_handler_pointer",
+    "blx r1",
+    "pop {{r0-r12}}",
+    "rfeia sp!", // load LR and SPSR from the stack
+    ".global svc_handler_pointer",
+    "svc_handler_pointer:",
+    ".word 0x0",
 );
 extern "C" {
     static interrupt_table_start: u32;
     static mut data_abort_handler_pointer: *mut extern "C" fn(*mut RegSet);
     static mut irq_handler_pointer: *mut extern "C" fn(*mut RegSet);
+    static mut svc_handler_pointer: *mut extern "C" fn(*mut RegSet);
 }
 
 fn read_fault_register() -> usize {
@@ -160,6 +175,10 @@ pub(crate) fn init_interrupt_handler() {
     set_high_exception_vector_address(addr_of!(interrupt_table_start) as usize);
 
     unsafe {
+        svc_handler_pointer = svc_handler as *mut extern "C" fn(*mut RegSet);
+    }
+
+    unsafe {
         irq_handler_pointer = irq_handler as *mut extern "C" fn(*mut RegSet);
     }
     unsafe {
@@ -184,6 +203,11 @@ pub(crate) fn init_interrupt_handler() {
         timer.enable();
         timer.arm(timer.frequency());
     }
+}
+
+pub(crate) fn svc_handler(reg_set: *mut RegSet) {
+    crate::console::println!("syscall!");
+    crate::semihosting::shutdown(0);
 }
 
 #[cfg(test)]
