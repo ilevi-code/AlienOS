@@ -1,0 +1,36 @@
+use super::{
+    consume::Consume,
+    error::FdtParseError,
+    memory::Memory,
+    tokens::{Parse, Token, TokenReader},
+};
+
+#[derive(Debug)]
+pub struct TreeRoot {
+    memory: Memory,
+}
+
+impl<'t, 'data: 't> Parse<'t, 'data> for TreeRoot {
+    fn parse(parser: &'t mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>> {
+        let mut memory: Option<Memory> = None;
+        loop {
+            let Some(node) = parser.read_token() else {
+                return Err(FdtParseError::MissingTokenEnd { current_type: "/" });
+            };
+            let node = node?;
+            let node_name = match node {
+                Token::BeginNode(name) => name,
+                Token::EndNode => break,
+                Token::Property { .. } => continue,
+                Token::Nop => continue,
+                Token::End => todo!(),
+            };
+            match node_name.split('@').next().unwrap() {
+                "memory" => memory = Some(Memory::parse(parser)?),
+                _ => _ = Consume::parse(parser)?,
+            };
+        }
+        let memory = memory.ok_or(FdtParseError::MissingField("/", "memory"))?;
+        Ok(TreeRoot { memory })
+    }
+}

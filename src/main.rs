@@ -6,7 +6,7 @@
 
 mod arch;
 mod console;
-mod dtb;
+mod device_tree;
 mod error;
 mod gic;
 mod heap;
@@ -17,23 +17,20 @@ mod mmu;
 mod num;
 mod panic_handler;
 mod phys;
-mod sched;
 mod semihosting;
 mod spinlock;
 mod step_range;
 mod testing;
 
-use dtb::DeviceTree;
 use kernel_location::get_kernel_location;
 use mmu::TranslationTable;
 
-// TODO parse from DTB
 const RAM_SIZE: usize = 0x2000_0000;
 const KERN_LINK: usize = 0xc000_0000;
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc, unreachable_code)]
-pub unsafe extern "C" fn main(_dtb: *mut DeviceTree, _bootstrap_table: usize) -> ! {
+pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
     #[cfg(test)]
     {
         test_main();
@@ -43,6 +40,10 @@ pub unsafe extern "C" fn main(_dtb: *mut DeviceTree, _bootstrap_table: usize) ->
     heap::init(get_kernel_location().end, KERN_LINK + RAM_SIZE);
     // TODO allocate enough space to copy and save the DeviceTree, before starting to do shit.
     init_mmu_fine_grained();
+
+    let root =
+        device_tree::parse(memory_model::phys_to_virt(&phys::Phys::<u8>::from(dtb)) as usize);
+    console::println!("{:x?}", root);
 
     interrupts::init_interrupt_handler();
 
