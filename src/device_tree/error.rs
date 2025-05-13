@@ -6,4 +6,6 @@ pub enum FdtParseError<'a> {
     MissingField(&'static str, &'static str),
     ValueTooShort(&'static str, &'static str),
     UnexpectedNode(&'a str),
+    UnknownInterruptType(u32),
+    InvalidInterruptFlags(u32),
 }

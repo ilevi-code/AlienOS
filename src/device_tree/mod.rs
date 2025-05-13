@@ -7,9 +7,11 @@ mod bytes_reader;
 mod consume;
 mod error;
 mod flattened_header;
+mod interrupts;
 mod memory;
 mod root;
 mod string_block;
+mod timer;
 mod tokens;
 
 pub(crate) fn parse(dtb_address: usize) -> TreeRoot {
@@ -23,6 +25,8 @@ pub(crate) fn parse(dtb_address: usize) -> TreeRoot {
             FdtParseError::ValueTooShort(node, field) => todo!(),
             FdtParseError::UnexpectedNode(node) => todo!(),
             FdtParseError::CorruptHeader => todo!(),
+            FdtParseError::UnknownInterruptType(_) => todo!(),
+            FdtParseError::InvalidInterruptFlags(_) => todo!(),
         },
     }
 }
