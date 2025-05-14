@@ -151,6 +151,7 @@ mod timer {
 
         pub(crate) fn irq_id(&self) -> usize {
             // Documented in the ARM docs, under "The processor timers", "Interrupts" subsection.
+            // Need to parse from DTB timer. It is PPI interrupt 0xb (add 16, because it's PPI)
             27
         }
     }

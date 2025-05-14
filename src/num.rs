@@ -55,15 +55,13 @@ where
         + Add<Output = T>
         + PartialEq
         + Copy
-        + OverflowingAdd
-        + core::fmt::LowerHex,
+        + OverflowingAdd,
 {
     fn align_up(self, align: Self) -> Self {
         let rem = self % align;
         if rem == Self::zero() {
             self
         } else {
-            // (self - rem).checked_add(align).value_or(0xffffffff)
             let (value, overflow) = (self - rem).overflowing_add(align);
             if overflow {
                 Self::max()

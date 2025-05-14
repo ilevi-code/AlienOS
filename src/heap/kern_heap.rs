@@ -32,6 +32,7 @@ unsafe impl GlobalAlloc for GlobalKernAllocator {
     }
 }
 
+#[global_allocator]
 static ALLOCATOR: GlobalKernAllocator = GlobalKernAllocator(SpinLock::new(None));
 
 pub fn init(kern_end: usize, ram_end: usize) {

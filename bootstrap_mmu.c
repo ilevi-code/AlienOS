@@ -37,6 +37,7 @@ translation_table_t* mmu_init()
     map_sections(&bootstrap_table, 0x8010000, 0x8010000, SECTION_SIZE, SECTION_AP(PERM_NONE) | TT_ENTRY_B);
     // Map UART
     map_sections(&bootstrap_table, 0x9000000, 0x9000000, SECTION_SIZE, SECTION_AP(PERM_NONE) | TT_ENTRY_B);
+    map_sections(&bootstrap_table, 0xa000000, 0xa000000, SECTION_SIZE, SECTION_AP(PERM_NONE) | TT_ENTRY_B);
 
     // Use 1:1 mapping for the bootstrap code
     map_sections(&bootstrap_table, start, start, bootstrap_size, SECTION_AP(PERM_NONE));
