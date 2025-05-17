@@ -14,7 +14,7 @@ use crate::phys::Phys;
 
 // Memory given by qemu
 const MEM_START: usize = 0x4000_0000;
-const PHYS_MAP_START: usize = 0x8000_0000;
+const PHYS_MAP_START: usize = 0xc000_0000;
 const PHYS_TO_VIRT: usize = PHYS_MAP_START - MEM_START;
 
 // 16MB left empty - to be mapped as devices

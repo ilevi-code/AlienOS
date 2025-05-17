@@ -5,8 +5,8 @@ use super::{
 };
 
 #[derive(Debug)]
-pub(super) struct Memory {
-    addresses: core::ops::Range<usize>,
+pub(crate) struct Memory {
+    pub(crate) addresses: core::ops::Range<usize>,
 }
 
 impl<'data> Parse<'data> for Memory {

@@ -25,7 +25,6 @@ mod testing;
 use kernel_location::get_kernel_location;
 use mmu::TranslationTable;
 
-const RAM_SIZE: usize = 0x2000_0000;
 const KERN_LINK: usize = 0xc000_0000;
 
 #[no_mangle]
@@ -37,13 +36,18 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
         semihosting::shutdown(0);
     }
 
-    heap::init(get_kernel_location().end, KERN_LINK + RAM_SIZE);
-    // TODO allocate enough space to copy and save the DeviceTree, before starting to do shit.
-    init_mmu_fine_grained();
+    let dtb_address = memory_model::phys_to_virt(&phys::Phys::<u8>::from(dtb));
+    let device_tree = device_tree::DeviceTree::from(dtb_address);
 
-    let root =
-        device_tree::parse(memory_model::phys_to_virt(&phys::Phys::<u8>::from(dtb)) as usize);
-    console::println!("{:x?}", root);
+    let memory = device_tree
+        .parse_node_type::<device_tree::Memory>("memory")
+        .expect("DeviceTree should contains \"memory\" node");
+    heap::init(
+        get_kernel_location().end,
+        KERN_LINK + memory.addresses.len(),
+    );
+
+    init_mmu_fine_grained();
 
     interrupts::init_interrupt_handler();
 

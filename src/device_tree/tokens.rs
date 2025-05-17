@@ -45,6 +45,6 @@ impl<'this, 't: 'this> TokenReader<'t> {
     }
 }
 
-pub(super) trait Parse<'data>: Sized {
+pub(crate) trait Parse<'data>: Sized {
     fn parse(parser: &mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>>;
 }

@@ -6,7 +6,7 @@ use super::{
 };
 
 #[derive(Debug)]
-pub(super) struct Timer {
+pub(crate) struct Timer {
     virt_timer_interrupt: Interrupt,
 }
 
