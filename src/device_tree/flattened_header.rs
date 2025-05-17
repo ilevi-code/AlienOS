@@ -31,6 +31,10 @@ impl FlattenedHeader {
         Ok(BytesReader::new(block))
     }
 
+    pub(crate) fn len(&self) -> usize {
+        u32::from_be(self.size) as usize
+    }
+
     fn slice_at<T>(&self, offset: u32, size: u32) -> Result<&[T], FdtParseError> {
         let addr = (self as *const FlattenedHeader) as *const T;
         let addr = unsafe { addr.byte_add(offset as usize) };

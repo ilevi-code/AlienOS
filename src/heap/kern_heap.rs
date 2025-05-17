@@ -6,7 +6,7 @@ use crate::{
 
 use super::kern_allocator::KernAlloctor;
 
-struct GlobalKernAllocator(SpinLock<Option<KernAlloctor>>);
+pub(crate) struct GlobalKernAllocator(SpinLock<Option<KernAlloctor>>);
 
 unsafe impl GlobalAlloc for GlobalKernAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -32,7 +32,7 @@ unsafe impl GlobalAlloc for GlobalKernAllocator {
     }
 }
 
-static ALLOCATOR: GlobalKernAllocator = GlobalKernAllocator(SpinLock::new(None));
+pub(crate) static ALLOCATOR: GlobalKernAllocator = GlobalKernAllocator(SpinLock::new(None));
 
 pub fn init(kern_end: usize, ram_end: usize) {
     let mut scale = "";

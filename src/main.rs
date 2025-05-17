@@ -4,6 +4,7 @@
 #![no_std]
 #![no_main]
 
+mod alloc;
 mod arch;
 mod console;
 mod device_tree;
@@ -22,6 +23,9 @@ mod spinlock;
 mod step_range;
 mod testing;
 
+use core::slice;
+
+use alloc::Vec;
 use kernel_location::get_kernel_location;
 use mmu::TranslationTable;
 
@@ -47,7 +51,19 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
         KERN_LINK + memory.addresses.len(),
     );
 
+    let mut raw_device_tree = Vec::<u8>::new();
+    raw_device_tree
+        .extend_from_slice(slice::from_raw_parts(
+            dtb_address as *const u8,
+            device_tree.len(),
+        ))
+        .expect("Device tree is too big");
+    let device_tree = device_tree::DeviceTree::from(raw_device_tree.as_mut_ptr());
+
     init_mmu_fine_grained();
+
+    let root = device_tree.parse_root();
+    console::println!("{:x?}", root);
 
     interrupts::init_interrupt_handler();
 
