@@ -9,8 +9,8 @@ pub(super) struct Memory {
     addresses: core::ops::Range<usize>,
 }
 
-impl<'t, 'data: 't> Parse<'t, 'data> for Memory {
-    fn parse(parser: &'t mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>> {
+impl<'data> Parse<'data> for Memory {
+    fn parse(parser: &mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>> {
         let mut addresses: Option<core::ops::Range<usize>> = None;
         loop {
             let Some(node) = parser.read_token() else {

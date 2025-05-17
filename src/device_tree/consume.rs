@@ -5,8 +5,8 @@ use super::{
 
 pub(super) struct Consume {}
 
-impl<'t, 'data: 't> Parse<'t, 'data> for Consume {
-    fn parse(parser: &'t mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>> {
+impl<'data> Parse<'data> for Consume {
+    fn parse(parser: &mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>> {
         let mut ends_needed = 1;
         while ends_needed > 0 {
             let Some(Ok(token)) = parser.read_token() else {

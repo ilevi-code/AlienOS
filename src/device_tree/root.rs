@@ -12,8 +12,8 @@ pub struct TreeRoot {
     timer: Timer,
 }
 
-impl<'t, 'data: 't> Parse<'t, 'data> for TreeRoot {
-    fn parse(parser: &'t mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>> {
+impl<'data> Parse<'data> for TreeRoot {
+    fn parse(parser: &mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>> {
         let mut memory: Option<Memory> = None;
         let mut timer: Option<Timer> = None;
         loop {

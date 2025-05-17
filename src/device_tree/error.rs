@@ -8,4 +8,5 @@ pub enum FdtParseError<'a> {
     UnexpectedNode(&'a str),
     UnknownInterruptType(u32),
     InvalidInterruptFlags(u32),
+    NotFound,
 }

@@ -10,8 +10,8 @@ pub(super) struct Timer {
     virt_timer_interrupt: Interrupt,
 }
 
-impl<'t, 'data: 't> Parse<'t, 'data> for Timer {
-    fn parse(parser: &'t mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>> {
+impl<'data> Parse<'data> for Timer {
+    fn parse(parser: &mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>> {
         let mut virt_timer_interrupt: Option<Interrupt> = None;
         loop {
             let Some(node) = parser.read_token() else {
