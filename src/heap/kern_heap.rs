@@ -1,7 +1,11 @@
 use core::alloc::{GlobalAlloc, Layout};
 
 use crate::{
-    console::println, error::Result, memory_model::virt_to_phys, phys::Phys, spinlock::SpinLock,
+    console::println,
+    error::{Error, Result},
+    memory_model::virt_to_phys,
+    phys::Phys,
+    spinlock::SpinLock,
 };
 
 use super::kern_allocator::KernAlloctor;
@@ -48,13 +52,16 @@ pub fn init(kern_end: usize, ram_end: usize) {
     *ALLOCATOR.0.lock() = Some(KernAlloctor::new(kern_end as *mut u8, ram_end as *mut u8));
 }
 
-pub fn alloc<T>() -> Result<Phys<T>> {
-    let virt = ALLOCATOR
+pub fn alloc<T>() -> Result<*mut T> {
+    let ptr = ALLOCATOR
         .0
         .lock()
         .as_mut()
         .expect("Heap should be initlized before alloc")
         .alloc(Layout::new::<T>())?
         .cast::<T>();
-    Ok(virt_to_phys(virt))
+    if ptr.is_null() {
+        return Err(Error::OutOfMem);
+    }
+    Ok(ptr)
 }

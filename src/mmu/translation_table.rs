@@ -59,7 +59,7 @@ impl<'a> TranslationTable<'a> {
 
     pub fn new(address_space: AddressSpace) -> Result<Self> {
         Ok(Self {
-            table: crate::memory_model::phys_to_virt_mut(&heap::alloc::<L1Table>()?),
+            table: unsafe { heap::alloc::<L1Table>()?.as_mut().unwrap() },
             address_space,
         })
     }
@@ -150,7 +150,7 @@ impl<'a> TranslationTable<'a> {
             EntryKind::Unmapped => (),
             _ => return Err(Error::Remap),
         };
-        entry.set_l2_table(new_l2_table, 0);
+        entry.set_l2_table(memory_model::virt_to_phys(new_l2_table), 0);
         // TODO Ok(phys_to_virt(frame))
         match self.table[l1_index].get_type() {
             EntryKind::SeconLevelTable(table) => Ok(phys_to_virt_mut(&table)),
