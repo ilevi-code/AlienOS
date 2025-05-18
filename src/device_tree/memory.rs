@@ -1,7 +1,8 @@
 use super::{
     bytes_reader::BytesReader,
     error::FdtParseError,
-    tokens::{Parse, Token, TokenReader},
+    parse::Parse,
+    tokens::{Token, TokenReader},
 };
 
 #[derive(Debug)]

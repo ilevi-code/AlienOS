@@ -1,7 +1,8 @@
 use super::error::FdtParseError;
 use super::flattened_header::FlattenedHeader;
+use super::parse::Parse;
 use super::root::TreeRoot;
-use super::tokens::{Parse, Token, TokenReader};
+use super::tokens::{Token, TokenReader};
 
 pub(crate) struct DeviceTree<'a> {
     dtb: &'a FlattenedHeader,

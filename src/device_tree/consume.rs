@@ -1,6 +1,7 @@
 use super::{
     error::FdtParseError,
-    tokens::{Parse, Token, TokenReader},
+    parse::Parse,
+    tokens::{Token, TokenReader},
 };
 
 pub(super) struct Consume {}

@@ -1,6 +1,5 @@
 pub(crate) use device_tree::DeviceTree;
 pub(crate) use memory::Memory;
-pub(crate) use tokens::Parse;
 
 mod bytes_reader;
 mod consume;
@@ -9,6 +8,7 @@ mod error;
 mod flattened_header;
 mod interrupts;
 mod memory;
+mod parse;
 mod root;
 mod string_block;
 mod timer;
