@@ -1,5 +1,5 @@
 #[derive(Debug)]
-pub enum FdtParseError<'a> {
+pub(crate) enum FdtParseError<'a> {
     CorruptHeader,
     UnknownToken(u32),
     MissingTokenEnd { current_type: &'static str },
@@ -9,4 +9,5 @@ pub enum FdtParseError<'a> {
     UnknownInterruptType(u32),
     InvalidInterruptFlags(u32),
     NotFound,
+    AllocError,
 }
