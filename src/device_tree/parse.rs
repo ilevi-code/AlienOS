@@ -2,7 +2,7 @@ use crate::alloc::Box;
 
 use super::{error::FdtParseError, tokens::TokenReader};
 
-pub(crate) trait Parse<'data>: Sized {
+pub(super) trait Parse<'data>: Sized {
     fn parse(parser: &mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>>;
 }
 

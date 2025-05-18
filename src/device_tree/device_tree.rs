@@ -20,6 +20,7 @@ impl<'a> DeviceTree<'a> {
         self.parse_node_type::<TreeRoot>("")
     }
 
+    #[allow(private_bounds)]
     pub(crate) fn parse_node_type<T: Parse<'a>>(
         &self,
         node_type: &str,

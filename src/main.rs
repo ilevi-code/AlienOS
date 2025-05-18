@@ -26,6 +26,7 @@ mod testing;
 use core::slice;
 
 use alloc::Vec;
+use device_tree::{DeviceTree, Memory};
 use kernel_location::get_kernel_location;
 use mmu::TranslationTable;
 
@@ -41,10 +42,10 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
     }
 
     let dtb_address = memory_model::phys_to_virt(&phys::Phys::<u8>::from(dtb));
-    let device_tree = device_tree::DeviceTree::from(dtb_address);
+    let device_tree = DeviceTree::from(dtb_address);
 
     let memory = device_tree
-        .parse_node_type::<device_tree::Memory>("memory")
+        .parse_node_type::<Memory>("memory")
         .expect("DeviceTree should contains \"memory\" node");
     heap::init(
         get_kernel_location().end,
@@ -58,7 +59,7 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
             device_tree.len(),
         ))
         .expect("Device tree is too big");
-    let device_tree = device_tree::DeviceTree::from(raw_device_tree.as_mut_ptr());
+    let device_tree = DeviceTree::from(raw_device_tree.as_mut_ptr());
 
     init_mmu_fine_grained();
 

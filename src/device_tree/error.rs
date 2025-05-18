@@ -1,4 +1,5 @@
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) enum FdtParseError<'a> {
     CorruptHeader,
     UnknownToken(u32),
