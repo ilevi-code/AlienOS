@@ -28,6 +28,10 @@ pub fn virt_to_phys<T>(phys: *mut T) -> Phys<T> {
     Phys::from(phys as usize - PHYS_TO_VIRT)
 }
 
+pub fn virt_to_phys_const<T>(phys: *const T) -> Phys<T> {
+    Phys::from(phys as usize - PHYS_TO_VIRT)
+}
+
 pub fn phys_to_virt_mut<T>(phys: &Phys<T>) -> &'static mut T {
     let virt = phys_to_virt(phys);
     unsafe { &mut *virt }

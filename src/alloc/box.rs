@@ -2,23 +2,56 @@ use crate::error::Error;
 use crate::{error::Result, heap::ALLOCATOR};
 
 use core::alloc::{GlobalAlloc, Layout};
-use core::ops::Deref;
+use core::ops::{Deref, DerefMut};
 use core::{mem::MaybeUninit, ptr::NonNull};
 
 pub(crate) struct Box<T>(NonNull<T>);
 
 impl<T> Box<T> {
     #[must_use]
-    pub(crate) fn new(value: T) -> Result<Box<T>> {
+    pub(crate) fn new_uninit() -> Result<Box<MaybeUninit<T>>> {
         // SAFETY:
         // Layout is of a valid type, and initialization is encofrced with `MaybeUninit`
         let ptr = unsafe { ALLOCATOR.alloc(Layout::new::<MaybeUninit<T>>()) };
-        let mut ptr = NonNull::new(ptr.cast::<MaybeUninit<T>>()).ok_or(Error::OutOfMem)?;
+        let ptr = NonNull::new(ptr.cast::<MaybeUninit<T>>()).ok_or(Error::OutOfMem)?;
+        Ok(Box(ptr))
+    }
+
+    #[must_use]
+    pub(crate) fn new(value: T) -> Result<Box<T>> {
+        let mut uninit = Self::new_uninit()?;
         // SAFETY:
         // Pointer is convertible to refernece, since it was allocated and verified to be non-null.
-        let mut_ref = unsafe { ptr.as_mut() };
+        let mut_ref = unsafe { uninit.0.as_mut() };
         mut_ref.write(value);
-        Ok(Self(ptr.cast::<T>()))
+        // SAFETY:
+        // The value has been initialized
+        Ok(unsafe { uninit.init() })
+    }
+
+    #[must_use]
+    pub(crate) fn zeroed() -> Result<Box<T>> {
+        // SAFETY:
+        // Layout is of a valid type, and initialization is encofrced with by zeroing
+        let ptr = unsafe { ALLOCATOR.alloc_zeroed(Layout::new::<T>()) };
+        let ptr = NonNull::new(ptr.cast::<T>()).ok_or(Error::OutOfMem)?;
+        Ok(Box(ptr))
+    }
+}
+
+impl<T> Into<NonNull<T>> for Box<T> {
+    fn into(self) -> NonNull<T> {
+        let ptr = self.0;
+        core::mem::forget(self);
+        ptr
+    }
+}
+
+impl<T> Box<MaybeUninit<T>> {
+    /// # Safety:
+    /// Must be called only when `self` has be initialized
+    pub(crate) unsafe fn init(self) -> Box<T> {
+        Box(self.0.cast::<T>())
     }
 }
 
@@ -40,6 +73,12 @@ impl<T> Deref for Box<T> {
 
     fn deref(&self) -> &Self::Target {
         unsafe { self.0.as_ref() }
+    }
+}
+
+impl<T> DerefMut for Box<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { self.0.as_mut() }
     }
 }
 

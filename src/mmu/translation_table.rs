@@ -235,6 +235,7 @@ impl<'a> TranslationTable<'a> {
 
     pub fn map_device<T>(&mut self, device: Phys<T>) -> Result<*mut T> {
         let start = device.addr().align_down(SMALL_PAGE_SIZE);
+        let offset = device.addr() - start;
         let end = (device.addr() + size_of::<T>()).align_up(SMALL_PAGE_SIZE);
         let size = end - start;
         let mut candidate = memory_model::DEVICE_VIRT;
@@ -248,7 +249,7 @@ impl<'a> TranslationTable<'a> {
                 false,
                 true,
             )?;
-            break Ok(candidate as *mut T);
+            break Ok((candidate + offset) as *mut T);
         }
     }
 

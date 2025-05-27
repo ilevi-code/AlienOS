@@ -8,6 +8,7 @@ mod alloc;
 mod arch;
 mod console;
 mod device_tree;
+mod drivers;
 mod error;
 mod gic;
 mod heap;
@@ -68,8 +69,52 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
 
     interrupts::init_interrupt_handler();
 
+    let mut kern_table = TranslationTable::get_kernel();
+    let disk_mmio = kern_table
+        .map_device(phys::Phys::<drivers::virtio_blk::regs::VirtioRegs>::from(
+            0xa003e00,
+        ))
+        .unwrap();
+    let blk = drivers::virtio_blk::VirtioBlkBuilder::new(drivers::virtio_blk::Unique::from(
+        core::ptr::NonNull::new(disk_mmio).unwrap(),
+    ))
+    .unwrap();
+    let queue = drivers::virtio_blk::virt_queue::VirtQueue::new().unwrap();
+    let mut blk = blk.add_queue(queue).unwrap();
+    let mut r = alloc::Box::<drivers::virtio_blk::block::Request>::zeroed().unwrap();
+    r.request_type = 1; // VIRTIO_BLK_T_OUT
+    r.data[0] = 1;
+    unsafe { core::arch::asm!("CPSID i") };
+    blk.write(r);
+
+    let mut lock = DISK.lock();
+    *lock = Some(blk);
+    drop(lock);
+    {
+        *interrupts::disk_handler.lock() = Some(disk_isr);
+    }
+    unsafe { core::arch::asm!("CPSIE i") };
+
+    for _ in 0..1000_usize {
+        core::hint::black_box(1);
+    }
+    // blk.status();
     loop {}
 }
+
+fn disk_isr() {
+    let mut guard = DISK.lock();
+    let Some(blk) = guard.as_mut() else {
+        return;
+    };
+    blk.status();
+    blk.interrupt_ack();
+    blk.check_used();
+    semihosting::shutdown(0);
+}
+
+static DISK: spinlock::SpinLock<Option<drivers::virtio_blk::VirtioBlk>> =
+    spinlock::SpinLock::new(None);
 
 fn init_mmu_fine_grained() {
     let _kern_location = get_kernel_location();

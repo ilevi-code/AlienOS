@@ -1,5 +1,6 @@
 /// Use to represent a pointer to a **physical** memory
 #[cfg_attr(test, derive(Debug, PartialEq))]
+#[derive(Clone, Copy)]
 pub struct Phys<T>(*mut T);
 
 impl<T> Phys<T> {
@@ -9,6 +10,10 @@ impl<T> Phys<T> {
 
     pub fn cast<U>(self) -> Phys<U> {
         Phys::<U>(self.0 as *mut U)
+    }
+
+    pub unsafe fn byte_add(self, count: usize) -> Self {
+        Self(self.0.byte_add(count))
     }
 }
 

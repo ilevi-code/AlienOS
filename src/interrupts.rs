@@ -1,5 +1,7 @@
 use core::ptr::addr_of;
 
+use crate::spinlock::SpinLock;
+
 #[repr(C)]
 #[derive(Default, Clone)]
 struct RegSet {
@@ -149,19 +151,29 @@ mod timer {
             tick_frequency
         }
 
-        pub(crate) fn irq_id(&self) -> usize {
+        pub(crate) fn irq_id() -> u32 {
             // Documented in the ARM docs, under "The processor timers", "Interrupts" subsection.
             27
         }
     }
 }
 
+type IsrHandler = fn() -> ();
+pub static disk_handler: SpinLock<Option<IsrHandler>> = SpinLock::new(None);
+
 extern "C" fn irq_handler(reg_set: *mut RegSet) {
     let gicc = super::gic::get_gicc();
     let int_num = gicc.current_interrupt_number();
     crate::console::println!("irq number #{}!\n", int_num);
-    let mut timer = timer::VirtualCounter;
-    timer.arm(timer.frequency());
+    if int_num == timer::VirtualCounter::irq_id() {
+        let mut timer = timer::VirtualCounter;
+        timer.arm(timer.frequency());
+    } else if int_num == 79 {
+        match *disk_handler.lock() {
+            Some(handler) => handler(),
+            None => crate::console::println!("no disk handler"),
+        }
+    }
     gicc.signal_end(int_num);
 }
 
@@ -195,6 +207,7 @@ pub(crate) fn init_interrupt_handler() {
         let gicd = super::gic::get_gicd();
         gicd.enable_forarding();
         gicd.enable_interrupt(27);
+        gicd.enable_interrupt(32 + 0x2f);
     }
 
     unsafe {
