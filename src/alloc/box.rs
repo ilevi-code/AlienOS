@@ -5,7 +5,7 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::ops::{Deref, DerefMut};
 use core::{mem::MaybeUninit, ptr::NonNull};
 
-pub(crate) struct Box<T>(NonNull<T>);
+pub(crate) struct Box<T: ?Sized>(NonNull<T>);
 
 impl<T> Box<T> {
     #[must_use]

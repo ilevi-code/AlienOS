@@ -1,95 +1,6 @@
-mod interrupts_controller;
-
 use core::ptr::addr_of;
 
 use crate::spinlock::SpinLock;
-
-#[repr(C)]
-#[derive(Default, Clone)]
-struct RegSet {
-    r: [usize; 13],
-    lr: usize,
-    cpsr: usize,
-}
-
-core::arch::global_asm!(
-    ".section interrupt_table, \"ax\"",
-    ".global interrupt_table_start",
-    "interrupt_table_start:",
-    "",
-    "nop",                   // reset handler
-    "nop",                   // undefined instruction handler
-    "b _svc_handler",        // svc handler
-    "nop",                   // prefetch abort
-    "b _data_abort_handler", // data abort
-    "nop",                   // unused
-    "b _irq_handler",        // IRQ
-    "nop",                   // FIQ
-    "",
-    "",
-    "_data_abort_handler:",
-    "sub lr, lr, #8", // The lr registers will point to 8 bytes after the faulting instruction
-    "srsdb #0x17!",   // push LR_abt and CPSR_abt to the stack.
-    "push {{r0-r12}}",
-    "mov r0, sp",
-    "ldr r1, data_abort_handler_pointer",
-    "blx r1",
-    "pop {{r0-r12}}",
-    "rfeia sp!", // load LR and SPSR from the stack
-    ".global data_abort_handler_pointer",
-    "data_abort_handler_pointer:",
-    ".word 0x0",
-    "",
-    "_irq_handler:",
-    "sub lr, lr, #4", // The lr registers will point to 4 bytes after the faulting instruction
-    "srsdb #0x12!",   // push LR_irq and CPSR_irq to the stack.
-    "push {{r0-r12}}",
-    "mov r0, sp",
-    "ldr r1, irq_handler_pointer",
-    "blx r1",
-    "pop {{r0-r12}}",
-    "rfeia sp!", // load LR and SPSR from the stack
-    ".global irq_handler_pointer",
-    "irq_handler_pointer:",
-    ".word 0x0",
-    "",
-    "_svc_handler:",
-    // check this
-    "sub lr, lr, #4", // The lr registers will point to 4 bytes after the faulting instruction
-    "srsdb #0x13!",   // push LR_svc and CPSR_svc to the stack.
-    "push {{r0-r12}}",
-    "mov r0, sp",
-    "ldr r1, svc_handler_pointer",
-    "blx r1",
-    "pop {{r0-r12}}",
-    "rfeia sp!", // load LR and SPSR from the stack
-    ".global svc_handler_pointer",
-    "svc_handler_pointer:",
-    ".word 0x0",
-);
-extern "C" {
-    static interrupt_table_start: u32;
-    static mut data_abort_handler_pointer: *mut extern "C" fn(*mut RegSet);
-    static mut irq_handler_pointer: *mut extern "C" fn(*mut RegSet);
-    static mut svc_handler_pointer: *mut extern "C" fn(*mut RegSet);
-}
-
-fn read_fault_register() -> usize {
-    let fault_address: usize;
-    unsafe {
-        core::arch::asm!("MRC p15, 0, {}, c6, c0, 0", out(reg) fault_address);
-    }
-    fault_address
-}
-
-#[no_mangle]
-extern "C" fn data_abort_handler(reg_set: *mut RegSet) {
-    crate::console::println!(
-        "fault acessing address 0x{:x} from 0x{:x}",
-        read_fault_register(),
-        unsafe { &*reg_set }.lr,
-    );
-}
 
 fn set_high_exception_vector_address(address: usize) {
     unsafe {
@@ -163,22 +74,6 @@ mod timer {
 type IsrHandler = fn() -> ();
 pub static disk_handler: SpinLock<Option<IsrHandler>> = SpinLock::new(None);
 
-extern "C" fn irq_handler(reg_set: *mut RegSet) {
-    let gicc = super::gic::get_gicc();
-    let int_num = gicc.current_interrupt_number();
-    crate::console::println!("irq number #{}!\n", int_num);
-    if int_num == timer::VirtualCounter::irq_id() {
-        let mut timer = timer::VirtualCounter;
-        timer.arm(timer.frequency());
-    } else if int_num == 79 {
-        match *disk_handler.lock() {
-            Some(handler) => handler(),
-            None => crate::console::println!("no disk handler"),
-        }
-    }
-    gicc.signal_end(int_num);
-}
-
 pub(crate) fn init_interrupt_handler() {
     set_data_abort_handler(data_abort_handler);
     // TODO setup stack for:
@@ -218,11 +113,6 @@ pub(crate) fn init_interrupt_handler() {
         timer.enable();
         timer.arm(timer.frequency());
     }
-}
-
-pub(crate) fn svc_handler(reg_set: *mut RegSet) {
-    crate::console::println!("syscall!");
-    crate::semihosting::shutdown(0);
 }
 
 #[cfg(test)]
