@@ -26,7 +26,7 @@ impl<T> Box<T> {
         mut_ref.write(value);
         // SAFETY:
         // The value has been initialized
-        Ok(unsafe { uninit.init() })
+        Ok(unsafe { Box::<MaybeUninit<T>>::assume_init(uninit) })
     }
 
     #[must_use]
@@ -50,8 +50,10 @@ impl<T> Into<NonNull<T>> for Box<T> {
 impl<T> Box<MaybeUninit<T>> {
     /// # Safety:
     /// Must be called only when `self` has be initialized
-    pub(crate) unsafe fn init(self) -> Box<T> {
-        Box(self.0.cast::<T>())
+    pub(crate) unsafe fn assume_init(this: Self) -> Box<T> {
+        let this = core::mem::ManuallyDrop::new(this);
+        Box(this.0.cast::<T>())
+        // Not dropping this, since ownership was transferred to the returned Box
     }
 }
 
