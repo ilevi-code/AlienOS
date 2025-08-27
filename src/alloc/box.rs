@@ -59,6 +59,11 @@ impl<T> Box<MaybeUninit<T>> {
 
 impl<T: ?Sized> Drop for Box<T> {
     fn drop(&mut self) {
+        // SAFETY:
+        // By definition of Box, the pointer is valid for read and writes, and non-null, and
+        // uniquely owned.
+        // The pointer is also properly aligned, since the layout was constructed from T.
+        unsafe { core::ptr::drop_in_place(self.0.as_ptr()) };
         let layout = Layout::for_value(unsafe { self.0.as_ref() });
         // SAFETY:
         // 1. Same pointer we got from alloc

@@ -2,7 +2,6 @@ use crate::error::Error;
 use crate::{error::Result, heap::ALLOCATOR};
 use core::alloc::{GlobalAlloc, Layout};
 use core::ops::{Index, IndexMut};
-use core::slice::SliceIndex;
 use core::{ptr, slice};
 
 pub(crate) struct Vec<T> {
@@ -119,6 +118,22 @@ impl<T> Vec<T> {
         }
         self.length += new_len;
         Ok(())
+    }
+}
+
+impl<T> Drop for Vec<T> {
+    fn drop(&mut self) {
+        // Treat valid elements as slice, and drop them.
+        // SAFETY:
+        // All elements until `length` are, by definition, initialized, aligned, and uniquely owned
+        // by the vector.
+        unsafe {
+            core::ptr::drop_in_place(core::ptr::slice_from_raw_parts_mut(
+                self.as_mut_ptr(),
+                self.length,
+            ))
+        };
+        self.deallocate();
     }
 }
 
