@@ -57,15 +57,14 @@ impl<T> Box<MaybeUninit<T>> {
     }
 }
 
-impl<T> Drop for Box<T> {
+impl<T: ?Sized> Drop for Box<T> {
     fn drop(&mut self) {
+        let layout = Layout::for_value(unsafe { self.0.as_ref() });
         // SAFETY:
-        // Same pointer we got from alloc, and same layout.
+        // 1. Same pointer we got from alloc
+        // 2. Same layout, since it is created from the value itself
         unsafe {
-            ALLOCATOR.dealloc(
-                self.0.cast::<u8>().as_ptr(),
-                Layout::new::<MaybeUninit<T>>(),
-            );
+            ALLOCATOR.dealloc(self.0.cast::<u8>().as_ptr(), layout);
         }
     }
 }
