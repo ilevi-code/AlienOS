@@ -56,8 +56,6 @@ pub mod virt_queue {
         len: u32,
     }
 
-    type Page = [u8; 4096];
-
     #[repr(C, align(16))]
     pub struct VirtQueue {
         descriptors: [Descriptor; VIRT_QUEUE_SIZE],

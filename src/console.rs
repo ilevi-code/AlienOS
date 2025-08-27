@@ -70,6 +70,7 @@ macro_rules! println {
     }};
 }
 
+#[cfg(test)]
 macro_rules! print {
     () => {};
     ($($arg:tt)*) => {{
@@ -77,5 +78,6 @@ macro_rules! print {
     }};
 }
 
+#[cfg(test)]
 pub(crate) use print;
 pub(crate) use println;

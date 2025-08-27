@@ -104,7 +104,7 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
     let queue = drivers::virtio_blk::virt_queue::VirtQueue::new().unwrap();
     let mut blk = blk.add_queue(queue).unwrap();
     let mut r = alloc::Box::<drivers::virtio_blk::block::Request>::zeroed().unwrap();
-    r.request_type = 1; // VIRTIO_BLK_T_OUT
+    r.request_type = drivers::virtio_blk::block::VIRTIO_BLK_T_OUT;
     r.data[0] = 1;
     unsafe { core::arch::asm!("CPSID i") };
     blk.write(r);
@@ -118,14 +118,12 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
             .as_mut()
             .unwrap()
             .register(Interrupt::Spi(0x2f), disk_isr);
-        // *interrupts::disk_handler.lock() = Some(disk_isr);
-    }
-
-    for _ in 0..1000_usize {
-        core::hint::black_box(1);
     }
 
     unsafe { core::arch::asm!("CPSIE i") };
+    for _ in 0..1000_usize {
+        core::hint::black_box(1);
+    }
     loop {}
 }
 
@@ -161,20 +159,4 @@ fn init_mmu_fine_grained() {
         .unwrap();
     console::println!("new uart at {:?}", new_uart);
     console::UART.store(new_uart, core::sync::atomic::Ordering::Relaxed);
-
-    // let new_gicc = kern_table
-    //     .map_device(phys::Phys::<gic::Gicc>::from(
-    //         gic::GICC.load(core::sync::atomic::Ordering::Relaxed) as usize,
-    //     ))
-    //     .unwrap();
-    // console::println!("new gicc at {:?}", new_uart);
-    // gic::GICC.store(new_gicc, core::sync::atomic::Ordering::Relaxed);
-
-    // let new_gicd = kern_table
-    //     .map_device(phys::Phys::<gic::Gicd>::from(
-    //         gic::GICD.load(core::sync::atomic::Ordering::Relaxed) as usize,
-    //     ))
-    //     .unwrap();
-    // console::println!("new gicd at {:?}", new_uart);
-    // gic::GICD.store(new_gicd, core::sync::atomic::Ordering::Relaxed);
 }
