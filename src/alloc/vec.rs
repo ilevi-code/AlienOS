@@ -1,7 +1,9 @@
 use crate::error::Error;
 use crate::{error::Result, heap::ALLOCATOR};
 use core::alloc::{GlobalAlloc, Layout};
-use core::ptr;
+use core::ops::{Index, IndexMut};
+use core::slice::SliceIndex;
+use core::{ptr, slice};
 
 pub(crate) struct Vec<T> {
     buf: *mut T,
@@ -91,5 +93,47 @@ impl<T> Vec<T> {
 
     pub(crate) fn as_mut_ptr(&mut self) -> *mut T {
         self.buf
+    }
+
+    pub(crate) fn resize(&mut self, new_len: usize, value: T) -> Result<()>
+    where
+        T: Clone,
+    {
+        if new_len > self.length {
+            self.extend(new_len - self.length, value)?
+        }
+        Ok(())
+    }
+
+    fn extend(&mut self, new_len: usize, value: T) -> Result<()>
+    where
+        T: Clone,
+    {
+        self.grow(new_len)?;
+        let mut ptr = unsafe { self.as_mut_ptr().add(self.length) };
+        for _ in 0..new_len {
+            unsafe {
+                ptr.write(value.clone());
+                ptr = ptr.add(1);
+            }
+        }
+        self.length += new_len;
+        Ok(())
+    }
+}
+
+impl<T> Index<usize> for Vec<T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        let slice = unsafe { slice::from_raw_parts(self.buf, self.length) };
+        Index::index(slice, index)
+    }
+}
+
+impl<T> IndexMut<usize> for Vec<T> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        let slice = unsafe { slice::from_raw_parts_mut(self.buf, self.length) };
+        IndexMut::index_mut(slice, index)
     }
 }
