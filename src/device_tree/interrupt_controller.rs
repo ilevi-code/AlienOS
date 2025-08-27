@@ -1,4 +1,8 @@
-use crate::device_tree::consume::Consume;
+use crate::{
+    device_tree::consume::Consume,
+    interrupts::{GicCpu, GicDispatcher},
+    phys::Phys,
+};
 
 use super::{
     bytes_reader::BytesReader,
@@ -9,8 +13,8 @@ use super::{
 
 #[derive(Debug)]
 pub(crate) struct InterruptController {
-    pub(crate) distributor: usize,
-    pub(crate) cpu_interface: usize,
+    pub(crate) distributor: Phys<GicDispatcher>,
+    pub(crate) cpu_interface: Phys<GicCpu>,
 }
 
 impl<'data> Parse<'data> for InterruptController {
@@ -25,7 +29,7 @@ impl<'data> Parse<'data> for InterruptController {
             };
             let node = node?;
             let (name, value) = match node {
-                Token::BeginNode(name) => {
+                Token::BeginNode(_) => {
                     Consume::parse(parser)?;
                     continue;
                 }
@@ -62,8 +66,8 @@ impl<'data> Parse<'data> for InterruptController {
         let distributor = distributor.ok_or(FdtParseError::MissingField("memory", "reg"))?;
         let cpu_interface = cpu_interface.ok_or(FdtParseError::MissingField("memory", "reg"))?;
         Ok(Self {
-            distributor,
-            cpu_interface,
+            distributor: distributor.into(),
+            cpu_interface: cpu_interface.into(),
         })
     }
 }

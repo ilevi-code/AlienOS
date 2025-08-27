@@ -33,7 +33,7 @@ use mmu::TranslationTable;
 
 use crate::{
     alloc::Unique,
-    interrupts::{GicCpu, GicDispatcher, Interrupt, InterruptController},
+    interrupts::{Interrupt, InterruptController},
 };
 
 const KERN_LINK: usize = 0xc000_0000;
@@ -67,11 +67,13 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
 
     *interrupts::CONTROLLER.lock() = Some(InterruptController::new(
         Unique::from(
-            core::ptr::NonNull::new(root.interrupt_controller.distributor as *mut GicDispatcher)
+            TranslationTable::get_kernel()
+                .map_device(root.interrupt_controller.distributor)
                 .unwrap(),
         ),
         Unique::from(
-            core::ptr::NonNull::new(root.interrupt_controller.cpu_interface as *mut GicCpu)
+            TranslationTable::get_kernel()
+                .map_device(root.interrupt_controller.cpu_interface)
                 .unwrap(),
         ),
     ));
@@ -97,10 +99,7 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
             0xa003e00,
         ))
         .unwrap();
-    let blk = drivers::virtio_blk::VirtioBlkBuilder::new(Unique::from(
-        core::ptr::NonNull::new(disk_mmio).unwrap(),
-    ))
-    .unwrap();
+    let blk = drivers::virtio_blk::VirtioBlkBuilder::new(Unique::from(disk_mmio)).unwrap();
     let queue = drivers::virtio_blk::virt_queue::VirtQueue::new().unwrap();
     let mut blk = blk.add_queue(queue).unwrap();
     let mut r = alloc::Box::<drivers::virtio_blk::block::Request>::zeroed().unwrap();
@@ -141,7 +140,6 @@ fn disk_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {
     blk.status();
     blk.interrupt_ack();
     blk.check_used();
-    semihosting::shutdown(0);
 }
 
 static DISK: spinlock::SpinLock<Option<drivers::virtio_blk::VirtioBlk>> =
@@ -158,5 +156,5 @@ fn init_mmu_fine_grained() {
         ))
         .unwrap();
     console::println!("new uart at {:?}", new_uart);
-    console::UART.store(new_uart, core::sync::atomic::Ordering::Relaxed);
+    console::UART.store(new_uart.as_ptr(), core::sync::atomic::Ordering::Relaxed);
 }

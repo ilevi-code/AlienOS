@@ -1,5 +1,6 @@
 use core::mem::size_of;
 use core::ops::Range;
+use core::ptr::NonNull;
 
 use crate::console::println;
 use crate::error::{Error, Result};
@@ -233,12 +234,12 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
-    pub fn map_device<T>(&mut self, device: Phys<T>) -> Result<*mut T> {
+    pub fn map_device<T>(&mut self, device: Phys<T>) -> Result<NonNull<T>> {
         let start = device.addr().align_down(SMALL_PAGE_SIZE);
         let offset = device.addr() - start;
         let end = (device.addr() + size_of::<T>()).align_up(SMALL_PAGE_SIZE);
         let size = end - start;
-        let mut candidate = memory_model::DEVICE_VIRT;
+        let candidate = memory_model::DEVICE_VIRT;
         loop {
             let candidate = self.offset_to_virt(self.seek_hole(candidate)?);
             self.map(
@@ -249,7 +250,7 @@ impl<'a> TranslationTable<'a> {
                 false,
                 true,
             )?;
-            break Ok((candidate + offset) as *mut T);
+            break Ok(NonNull::<T>::new((candidate + offset) as *mut T).unwrap());
         }
     }
 
