@@ -6,11 +6,13 @@ OBJCOPY := $(TOOLCHAIN)objcopy
 ASFLAGS := -g -march=armv7-a
 CFLAGS := -g -nostdlib -nostdinc -march=armv7-a
 
-.PHONY: clean
+KERNEL ?= target/armv7a-none-eabi/debug/baremetal
 
 ifneq ($(QEMU_DEBUG),)
 QEMU_FLAGS := -S -s
 endif
+
+.PHONY: clean
 
 qemu: kernel.bin | fs.img
 	qemu-system-arm -m 512M -M virt $(QEMU_FLAGS) -semihosting -nographic -kernel kernel.bin \
