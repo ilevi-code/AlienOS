@@ -1,6 +1,5 @@
 /// Use to represent a pointer to a **physical** memory
-#[cfg_attr(test, derive(Debug, PartialEq))]
-#[derive(Clone, Copy)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Phys<T>(*mut T);
 
 impl<T> Phys<T> {
@@ -28,3 +27,17 @@ impl<T> From<*mut T> for Phys<T> {
         Self(ptr)
     }
 }
+
+impl<T> core::fmt::Debug for Phys<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("Phys").field(&self.0).finish()
+    }
+}
+
+impl<T> Clone for Phys<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T> Copy for Phys<T> {}
