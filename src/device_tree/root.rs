@@ -3,6 +3,7 @@ use crate::alloc::Box;
 use super::{
     consume::Consume,
     error::FdtParseError,
+    interrupt_controller::InterruptController,
     memory::Memory,
     parse::Parse,
     timer::Timer,
@@ -11,14 +12,16 @@ use super::{
 
 #[derive(Debug)]
 pub struct TreeRoot {
-    memory: Box<Memory>,
-    timer: Box<Timer>,
+    pub memory: Box<Memory>,
+    pub timer: Box<Timer>,
+    pub interrupt_controller: Box<InterruptController>,
 }
 
 impl<'data> Parse<'data> for TreeRoot {
     fn parse(parser: &mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>> {
         let mut memory: Option<Box<Memory>> = None;
         let mut timer: Option<Box<Timer>> = None;
+        let mut interrupt_controller: Option<Box<InterruptController>> = None;
         loop {
             let Some(node) = parser.read_token() else {
                 return Err(FdtParseError::MissingTokenEnd { current_type: "/" });
@@ -34,11 +37,19 @@ impl<'data> Parse<'data> for TreeRoot {
             match node_name.split('@').next().unwrap() {
                 "memory" => memory = Some(Box::<Memory>::parse(parser)?),
                 "timer" => timer = Some(Box::<Timer>::parse(parser)?),
+                "intc" => interrupt_controller = Some(Box::<InterruptController>::parse(parser)?),
                 _ => _ = Consume::parse(parser)?,
             };
         }
         let memory = memory.ok_or(FdtParseError::MissingField("/", "memory"))?;
         let timer = timer.ok_or(FdtParseError::MissingField("/", "timer"))?;
-        Ok(TreeRoot { memory, timer })
+        let interrupt_controller =
+            interrupt_controller.ok_or(FdtParseError::MissingField("/", "intc"))?;
+        // crate::console::println!("{interrupt_controller:x?}");
+        Ok(TreeRoot {
+            memory,
+            timer,
+            interrupt_controller,
+        })
     }
 }

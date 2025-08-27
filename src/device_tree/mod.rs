@@ -6,6 +6,7 @@ mod consume;
 mod device_tree;
 mod error;
 mod flattened_header;
+mod interrupt_controller;
 mod interrupts;
 mod memory;
 mod parse;
