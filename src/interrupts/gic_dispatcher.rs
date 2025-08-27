@@ -1,5 +1,5 @@
 #[repr(C)]
-pub(super) struct GicDispatcher {
+pub struct GicDispatcher {
     pub ctlr: u32,
     _align: [u8; 252],
     pub isenabler: [u32; 7],

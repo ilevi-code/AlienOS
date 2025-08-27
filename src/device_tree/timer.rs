@@ -8,12 +8,12 @@ use super::{
 
 #[derive(Debug)]
 pub(crate) struct Timer {
-    virt_timer_interrupt: Interrupt,
+    pub(crate) virt_timer: Interrupt,
 }
 
 impl<'data> Parse<'data> for Timer {
     fn parse(parser: &mut TokenReader<'data>) -> Result<Self, FdtParseError<'data>> {
-        let mut virt_timer_interrupt: Option<Interrupt> = None;
+        let mut virt_timer: Option<Interrupt> = None;
         loop {
             let Some(node) = parser.read_token() else {
                 return Err(FdtParseError::MissingTokenEnd {
@@ -40,15 +40,12 @@ impl<'data> Parse<'data> for Timer {
                     let virt = reader
                         .next()
                         .ok_or(FdtParseError::ValueTooShort("timer", "interrupts"))??;
-                    virt_timer_interrupt = Some(virt);
+                    virt_timer = Some(virt);
                 }
                 _ => (),
             };
         }
-        let virt_timer_interrupt =
-            virt_timer_interrupt.ok_or(FdtParseError::MissingField("timer", "interrupts"))?;
-        Ok(Timer {
-            virt_timer_interrupt,
-        })
+        let virt_timer = virt_timer.ok_or(FdtParseError::MissingField("timer", "interrupts"))?;
+        Ok(Timer { virt_timer })
     }
 }

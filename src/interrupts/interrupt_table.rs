@@ -1,3 +1,5 @@
+use crate::interrupts::reg_set::RegSet;
+
 core::arch::global_asm!(
     ".section interrupt_table, \"ax\"",
     ".global interrupt_table_start",

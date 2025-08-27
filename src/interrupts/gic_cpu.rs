@@ -1,5 +1,5 @@
 #[repr(C)]
-pub(super) struct GicCpu {
+pub struct GicCpu {
     pub ctlr: u32,
     pub pmr: u32,
     _bpr: u32,

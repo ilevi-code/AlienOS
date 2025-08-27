@@ -31,17 +31,16 @@ use device_tree::{DeviceTree, Memory};
 use kernel_location::get_kernel_location;
 use mmu::TranslationTable;
 
+use crate::{
+    alloc::Unique,
+    interrupts::{GicCpu, GicDispatcher, Interrupt, InterruptController},
+};
+
 const KERN_LINK: usize = 0xc000_0000;
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc, unreachable_code)]
 pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
-    #[cfg(test)]
-    {
-        test_main();
-        semihosting::shutdown(0);
-    }
-
     let dtb_address = memory_model::phys_to_virt(&phys::Phys::<u8>::from(dtb));
     let device_tree = DeviceTree::from(dtb_address);
 
@@ -64,10 +63,33 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
 
     init_mmu_fine_grained();
 
-    let root = device_tree.parse_root();
-    console::println!("{:x?}", root);
+    let root = device_tree.parse_root().expect("Failed to parse DTB");
 
-    interrupts::init_interrupt_handler();
+    *interrupts::CONTROLLER.lock() = Some(InterruptController::new(
+        Unique::from(
+            core::ptr::NonNull::new(root.interrupt_controller.distributor as *mut GicDispatcher)
+                .unwrap(),
+        ),
+        Unique::from(
+            core::ptr::NonNull::new(root.interrupt_controller.cpu_interface as *mut GicCpu)
+                .unwrap(),
+        ),
+    ));
+
+    #[cfg(test)]
+    {
+        test_main();
+        semihosting::shutdown(0);
+    }
+
+    interrupts::CONTROLLER
+        .lock()
+        .as_mut()
+        .unwrap()
+        .register(root.timer.virt_timer.interrupt, timer_isr);
+    let mut timer = interrupts::VirtualCounter;
+    timer.enable();
+    timer.arm(timer.frequency());
 
     let mut kern_table = TranslationTable::get_kernel();
     let disk_mmio = kern_table
@@ -75,7 +97,7 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
             0xa003e00,
         ))
         .unwrap();
-    let blk = drivers::virtio_blk::VirtioBlkBuilder::new(drivers::virtio_blk::Unique::from(
+    let blk = drivers::virtio_blk::VirtioBlkBuilder::new(Unique::from(
         core::ptr::NonNull::new(disk_mmio).unwrap(),
     ))
     .unwrap();
@@ -91,18 +113,29 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
     *lock = Some(blk);
     drop(lock);
     {
-        *interrupts::disk_handler.lock() = Some(disk_isr);
+        interrupts::CONTROLLER
+            .lock()
+            .as_mut()
+            .unwrap()
+            .register(Interrupt::Spi(0x2f), disk_isr);
+        // *interrupts::disk_handler.lock() = Some(disk_isr);
     }
-    unsafe { core::arch::asm!("CPSIE i") };
 
     for _ in 0..1000_usize {
         core::hint::black_box(1);
     }
-    // blk.status();
+
+    unsafe { core::arch::asm!("CPSIE i") };
     loop {}
 }
 
-fn disk_isr() {
+fn timer_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {
+    let mut timer = interrupts::VirtualCounter;
+    timer.arm(timer.frequency());
+    console::println!("Timer!");
+}
+
+fn disk_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {
     let mut guard = DISK.lock();
     let Some(blk) = guard.as_mut() else {
         return;
@@ -117,7 +150,6 @@ static DISK: spinlock::SpinLock<Option<drivers::virtio_blk::VirtioBlk>> =
     spinlock::SpinLock::new(None);
 
 fn init_mmu_fine_grained() {
-    let _kern_location = get_kernel_location();
     let mut kern_table = TranslationTable::get_kernel();
     kern_table.unmap(memory_model::DEVICE_VIRT..0xffef_ffff); // should unmap until 0xffff_ffff, but
                                                               // it used for interrupt stack
@@ -130,19 +162,19 @@ fn init_mmu_fine_grained() {
     console::println!("new uart at {:?}", new_uart);
     console::UART.store(new_uart, core::sync::atomic::Ordering::Relaxed);
 
-    let new_gicc = kern_table
-        .map_device(phys::Phys::<gic::Gicc>::from(
-            gic::GICC.load(core::sync::atomic::Ordering::Relaxed) as usize,
-        ))
-        .unwrap();
-    console::println!("new gicc at {:?}", new_uart);
-    gic::GICC.store(new_gicc, core::sync::atomic::Ordering::Relaxed);
+    // let new_gicc = kern_table
+    //     .map_device(phys::Phys::<gic::Gicc>::from(
+    //         gic::GICC.load(core::sync::atomic::Ordering::Relaxed) as usize,
+    //     ))
+    //     .unwrap();
+    // console::println!("new gicc at {:?}", new_uart);
+    // gic::GICC.store(new_gicc, core::sync::atomic::Ordering::Relaxed);
 
-    let new_gicd = kern_table
-        .map_device(phys::Phys::<gic::Gicd>::from(
-            gic::GICD.load(core::sync::atomic::Ordering::Relaxed) as usize,
-        ))
-        .unwrap();
-    console::println!("new gicd at {:?}", new_uart);
-    gic::GICD.store(new_gicd, core::sync::atomic::Ordering::Relaxed);
+    // let new_gicd = kern_table
+    //     .map_device(phys::Phys::<gic::Gicd>::from(
+    //         gic::GICD.load(core::sync::atomic::Ordering::Relaxed) as usize,
+    //     ))
+    //     .unwrap();
+    // console::println!("new gicd at {:?}", new_uart);
+    // gic::GICD.store(new_gicd, core::sync::atomic::Ordering::Relaxed);
 }

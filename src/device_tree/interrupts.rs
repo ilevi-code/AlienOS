@@ -1,16 +1,10 @@
 use super::{bytes_reader::BytesReader, error::FdtParseError};
+use crate::interrupts::Interrupt as RawInterrupt;
 
-#[derive(Debug)]
-pub enum InterruptType {
-    Spi,
-    Ppi,
-}
-
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Interrupt {
-    int_type: InterruptType,
-    number: u32,
-    flags: u16,
+    pub interrupt: RawInterrupt,
+    pub flags: u16,
 }
 
 pub(super) struct InterruptIterator<'a> {
@@ -30,19 +24,15 @@ impl<'a> Iterator for InterruptIterator<'a> {
         let int_type = self.reader.read_u32()?;
         let number = self.reader.read_u32()?;
         let flags = self.reader.read_u32()?;
-        let int_type = match int_type {
-            0 => InterruptType::Spi,
-            1 => InterruptType::Ppi,
+        let interrupt = match int_type {
+            0 => RawInterrupt::Spi(number as u8),
+            1 => RawInterrupt::Ppi(number as u8),
             other => return Some(Err(FdtParseError::UnknownInterruptType(other))),
         };
         let flags: u16 = match flags.try_into() {
             Ok(flags) => flags,
             Err(_) => return Some(Err(FdtParseError::InvalidInterruptFlags(flags))),
         };
-        Some(Ok(Interrupt {
-            int_type,
-            number,
-            flags,
-        }))
+        Some(Ok(Interrupt { interrupt, flags }))
     }
 }

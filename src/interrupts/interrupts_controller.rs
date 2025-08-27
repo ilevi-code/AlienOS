@@ -6,40 +6,37 @@ use super::{
 };
 use crate::{
     alloc::{Unique, Vec},
+    interrupts::Interrupt,
     spinlock::SpinLock,
 };
 
-type IrqHandler = Box<dyn Fn() -> ()>;
+type IrqHandler = fn(u32, &mut RegSet) -> ();
 
-struct InterruptController {
-    gic_cpu: Unique<GicCpu>,
-    gic_dispatcher: Unique<GicDispatcher>,
+pub struct InterruptController {
+    dispatcher: Unique<GicDispatcher>,
+    cpu_interface: Unique<GicCpu>,
     irq_handlers: Vec<IrqHandler>,
 }
 
-extern "C" fn irq_handler(reg_set: *mut RegSet) {
-    let gicc: GicCpu;
-    let int_num = gicc.current_interrupt_number();
-    crate::console::println!("irq number #{}!\n", int_num);
-    if int_num == timer::VirtualCounter::irq_id() {
-        let mut timer = timer::VirtualCounter;
-        timer.arm(timer.frequency());
-    } else if int_num == 79 {
-        match *disk_handler.lock() {
-            Some(handler) => handler(),
-            None => crate::console::println!("no disk handler"),
-        }
-    }
-    gicc.signal_end(int_num);
-}
+pub static CONTROLLER: SpinLock<Option<InterruptController>> = SpinLock::new(None);
 
-pub(crate) fn svc_handler(reg_set: *mut RegSet) {
-    crate::console::println!("syscall!");
-    crate::semihosting::shutdown(0);
-}
+// extern crate alloc;
+// struct ExceptionHandlerStacks {
+//     data_abort_stack: alloc::boxed::Box<[u8]>,
+// }
+// fn set_data_abort_stack(stack: usize) {
+//     unsafe {
+//         core::arch::asm!(
+//             "msr CPSR_c, #0x17",
+//             "mov sp, {}",
+//             "msr CPSR_c, #0x13",
+//             in(reg) stack,
+//         );
+//     }
+// }
 
 impl InterruptController {
-    fn new(gic_cpu: Unique<GicCpu>, gic_dispatcher: Unique<GicDispatcher>) -> Self {
+    pub fn new(mut dispatcher: Unique<GicDispatcher>, mut cpu_interface: Unique<GicCpu>) -> Self {
         unsafe {
             super::interrupt_table::data_abort_handler_pointer =
                 data_abort_handler as *mut extern "C" fn(*mut RegSet);
@@ -53,10 +50,18 @@ impl InterruptController {
             super::interrupt_table::irq_handler_pointer =
                 irq_handler as *mut extern "C" fn(*mut RegSet);
         }
+        // TODO setup stack for:
+        // abort (mode 0b10111)
+        // FIQ (mode 0b10001)
+        // IRQ (mode 0b10010)
+        // currently, SP_abrt is 0, so the stack grow down from 0xffff_ffff.
         Self::set_high_exception_vector_address(addr_of!(interrupt_table_start) as usize);
+        cpu_interface.enable_singaling_to_cpu();
+        cpu_interface.set_prio_mask(GicCpu::ALLOW_ALL);
+        dispatcher.enable_forarding();
         InterruptController {
-            gic_cpu,
-            gic_dispatcher,
+            cpu_interface,
+            dispatcher,
             irq_handlers: Vec::new(),
         }
     }
@@ -66,4 +71,33 @@ impl InterruptController {
             core::arch::asm!("MCR p15, 0, {}, c12, c0, 0", in(reg) address);
         }
     }
+
+    pub fn register(&mut self, interrupt: Interrupt, handler: IrqHandler) {
+        let interrupt = match interrupt {
+            Interrupt::Spi(num) => num as usize + 32,
+            Interrupt::Ppi(num) => num as usize + 16,
+        };
+        self.irq_handlers
+            .resize(interrupt + 1, default_isr)
+            .unwrap();
+        self.irq_handlers[interrupt] = handler;
+        self.dispatcher.enable_interrupt(interrupt);
+    }
+}
+
+extern "C" fn irq_handler(reg_set: *mut RegSet) {
+    let mut guard = CONTROLLER.lock();
+    let controller = guard.as_mut().unwrap();
+    let int_num = controller.cpu_interface.current_interrupt_number();
+    controller.irq_handlers[int_num as usize](int_num, unsafe { &mut *reg_set });
+    controller.cpu_interface.signal_end(int_num);
+}
+
+pub(crate) fn svc_handler(reg_set: *mut RegSet) {
+    crate::console::println!("syscall!");
+    crate::semihosting::shutdown(0);
+}
+
+fn default_isr(int_num: u32, reg_set: &mut RegSet) {
+    crate::console::println!("irq number #{}!", int_num);
 }

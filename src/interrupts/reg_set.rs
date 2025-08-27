@@ -1,7 +1,7 @@
 #[repr(C)]
 #[derive(Default, Clone)]
-pub(super) struct RegSet {
-    r: [usize; 13],
-    lr: usize,
-    cpsr: usize,
+pub struct RegSet {
+    pub r: [usize; 13],
+    pub lr: usize,
+    pub cpsr: usize,
 }
