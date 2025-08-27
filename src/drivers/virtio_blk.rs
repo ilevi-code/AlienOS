@@ -1,12 +1,7 @@
-use core::{
-    arch::asm,
-    mem::offset_of,
-    ops::{Deref, DerefMut},
-    ptr::NonNull,
-};
+use core::{arch::asm, mem::offset_of, ptr::NonNull};
 
 use crate::{
-    alloc::{Box, Vec},
+    alloc::{Box, Unique},
     memory_model::{phys_to_virt, virt_to_phys},
 };
 
@@ -19,13 +14,9 @@ fn data_sync() {
     unsafe { asm!("dsb") }
 }
 pub mod virt_queue {
-    use core::ptr::{addr_of, addr_of_mut, NonNull};
+    use core::ptr::addr_of;
 
-    use crate::{
-        alloc::Box,
-        memory_model::{virt_to_phys, virt_to_phys_const},
-        phys::Phys,
-    };
+    use crate::{alloc::Box, memory_model::virt_to_phys_const, phys::Phys};
 
     enum Flag {
         NEXT = 1,
@@ -324,30 +315,6 @@ pub enum Error {
     QueueUnavailable,
 }
 
-pub struct Unique<T> {
-    ptr: NonNull<T>,
-}
-
-impl<T> From<NonNull<T>> for Unique<T> {
-    fn from(ptr: NonNull<T>) -> Self {
-        Self { ptr }
-    }
-}
-
-impl<T> Deref for Unique<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { self.ptr.as_ref() }
-    }
-}
-
-impl<T> DerefMut for Unique<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { self.ptr.as_mut() }
-    }
-}
-
 pub struct VirtioBlkBuilder {
     regs: Unique<regs::VirtioRegs>,
 }
@@ -359,7 +326,7 @@ pub struct VirtioBlk {
 
 impl VirtioBlkBuilder {
     pub fn new(mut regs: Unique<regs::VirtioRegs>) -> Result<Self, Error> {
-        crate::console::println!("{:?}", regs.ptr);
+        crate::console::println!("{:?}", regs.as_ptr());
         if regs.magic() != VIRIO_MAGIC {
             return Err(Error::BadMagic);
         }
@@ -389,12 +356,14 @@ impl VirtioBlkBuilder {
             return Err(Error::FeatureNegotiationFailed);
         }
 
-        let config = unsafe { regs.ptr.byte_add(0x100).cast::<block::VirtioBlkConfig>() };
+        let config = unsafe {
+            regs.as_ptr()
+                .byte_add(0x100)
+                .cast::<block::VirtioBlkConfig>()
+        };
+        let config = unsafe { config.as_ref() }.unwrap();
         crate::console::println!("status: {:x}", regs.status());
-        crate::console::println!(
-            "disk contains {:x} sectors",
-            unsafe { config.as_ref() }.capacity_low()
-        );
+        crate::console::println!("disk contains {:x} sectors", config.capacity_low());
 
         // fill the blk-config
         status |= DEVICE_STATUS_DRIVER_OK;

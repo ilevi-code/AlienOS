@@ -5,8 +5,8 @@ use super::{
     interrupt_table::interrupt_table_start, reg_set::RegSet,
 };
 use crate::{
-    alloc::{Box, Vec},
-    drivers::virtio_blk::Unique,
+    alloc::{Unique, Vec},
+    spinlock::SpinLock,
 };
 
 type IrqHandler = Box<dyn Fn() -> ()>;
