@@ -10,6 +10,7 @@ mod interrupt_controller;
 mod interrupts;
 mod memory;
 mod parse;
+mod pl011;
 mod root;
 mod string_block;
 mod timer;

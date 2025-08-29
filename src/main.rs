@@ -91,9 +91,9 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
         .lock()
         .as_mut()
         .unwrap()
-        .register(crate::interrupts::Interrupt::Spi(1), console_isr);
+        .register(root.pl011.interrupt.interrupt, console_isr);
     let mut uart: Unique<Pl011Regs> = TranslationTable::get_kernel()
-        .map_device(phys::Phys::<Pl011Regs>::from(0x09000000))
+        .map_device(root.pl011.address)
         .unwrap()
         .into();
     let mask = uart.interrupt_mask() | 1 << 4;
@@ -143,20 +143,23 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
 }
 
 fn console_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {
-    // TODO handle reading multiple bytes
-    let mut data: Option<u8> = None;
+    let mut data = [0u32; 4];
+    let mut index = 0;
 
     {
         let mut uart = SERIAL.lock();
         while uart.flag() & (1 << 4) == 0 {
-            data = Some(uart.data() as u8);
+            if index < data.len() {
+                data[index] = uart.data();
+                index += 1;
+            } else {
+                uart.data();
+            }
         }
         uart.set_interrupt_clear(1 << 4);
     }
 
-    if let Some(data) = data {
-        console::println!("console: {data:x}");
-    }
+    console::println!("console: {data:x?}");
 }
 
 fn timer_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {
