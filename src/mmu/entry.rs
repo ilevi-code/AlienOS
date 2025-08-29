@@ -1,3 +1,6 @@
+use core::ops::{Index, IndexMut};
+use core::slice::SliceIndex;
+
 use crate::mmu::l2entry::L2Entry;
 use crate::mmu::PagePerm;
 use crate::phys::Phys;
@@ -9,7 +12,23 @@ pub(super) struct Entry {
     value: usize,
 }
 
-pub(super) type SeconLevelTable = [L2Entry; L2_ENTRY_COUNT];
+#[repr(align(1024))]
+pub(super) struct SeconLevelTable([L2Entry; L2_ENTRY_COUNT]);
+
+impl<I: SliceIndex<[L2Entry]>> Index<I> for SeconLevelTable {
+    type Output = I::Output;
+
+    fn index(&self, index: I) -> &Self::Output {
+        Index::index(&self.0, index)
+    }
+}
+
+impl<I: SliceIndex<[L2Entry]>> IndexMut<I> for SeconLevelTable {
+    fn index_mut(&mut self, index: I) -> &mut Self::Output {
+        IndexMut::index_mut(&mut self.0, index)
+    }
+}
+
 pub(super) type Section = [u8; 1024 * 1024];
 
 pub(super) enum EntryKind {
