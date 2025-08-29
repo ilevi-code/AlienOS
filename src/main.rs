@@ -27,9 +27,12 @@ mod testing;
 use core::slice;
 
 use alloc::Vec;
+use console::Pl011Regs;
+use console::SERIAL;
 use device_tree::{DeviceTree, Memory};
 use kernel_location::get_kernel_location;
 use mmu::TranslationTable;
+use spinlock::SpinLock;
 
 use crate::{
     alloc::Unique,
@@ -88,6 +91,19 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
         .lock()
         .as_mut()
         .unwrap()
+        .register(crate::interrupts::Interrupt::Spi(1), console_isr);
+    let mut uart: Unique<Pl011Regs> = TranslationTable::get_kernel()
+        .map_device(phys::Phys::<Pl011Regs>::from(0x09000000))
+        .unwrap()
+        .into();
+    let mask = uart.interrupt_mask() | 1 << 4;
+    uart.set_interrupt_mask(mask);
+    *SERIAL.lock() = uart;
+
+    interrupts::CONTROLLER
+        .lock()
+        .as_mut()
+        .unwrap()
         .register(root.timer.virt_timer.interrupt, timer_isr);
     let mut timer = interrupts::VirtualCounter;
     timer.enable();
@@ -126,6 +142,23 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
     loop {}
 }
 
+fn console_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {
+    // TODO handle reading multiple bytes
+    let mut data: Option<u8> = None;
+
+    {
+        let mut uart = SERIAL.lock();
+        while uart.flag() & (1 << 4) == 0 {
+            data = Some(uart.data() as u8);
+        }
+        uart.set_interrupt_clear(1 << 4);
+    }
+
+    if let Some(data) = data {
+        console::println!("console: {data:x}");
+    }
+}
+
 fn timer_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {
     let mut timer = interrupts::VirtualCounter;
     timer.arm(timer.frequency());
@@ -150,11 +183,11 @@ fn init_mmu_fine_grained() {
     kern_table.unmap(memory_model::DEVICE_VIRT..0xffef_ffff); // should unmap until 0xffff_ffff, but
                                                               // it used for interrupt stack
 
-    let new_uart = kern_table
-        .map_device(phys::Phys::<u8>::from(
-            console::UART.load(core::sync::atomic::Ordering::Relaxed) as usize,
-        ))
-        .unwrap();
-    console::println!("new uart at {:?}", new_uart);
-    console::UART.store(new_uart.as_ptr(), core::sync::atomic::Ordering::Relaxed);
+    // let new_uart = kern_table
+    //     .map_device(phys::Phys::<u8>::from(
+    //         console::SERIAL.load(core::sync::atomic::Ordering::Relaxed) as usize,
+    //     ))
+    //     .unwrap();
+    // console::println!("new uart at {:?}", new_uart);
+    // console::UART.store(new_uart.as_ptr(), core::sync::atomic::Ordering::Relaxed);
 }

@@ -11,11 +11,15 @@ impl<T> Unique<T> {
     pub fn as_ptr(&self) -> *const T {
         self.ptr.as_ptr()
     }
+
+    pub const fn from_non_null(ptr: NonNull<T>) -> Self {
+        Self { ptr }
+    }
 }
 
 impl<T> From<NonNull<T>> for Unique<T> {
     fn from(ptr: NonNull<T>) -> Self {
-        Self { ptr }
+        Self::from_non_null(ptr)
     }
 }
 
