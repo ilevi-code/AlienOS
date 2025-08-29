@@ -70,7 +70,7 @@ impl KernAlloctor {
     /// Any excess memory is free'd, and will be available for smaller allocation.
     fn force_alignment(&mut self, size: BlockSize) {
         if !self.curr.is_aligned_to(size.byte_count()) {
-            let bytes = self.curr.align_offset(size.byte_count());
+            let bytes = self.curr.align_offset(size.byte_count()) * size_of::<Block>();
             // `self.curr` is always aligned to `align_of::<Block>`, as well as `BlockSize`
             let size = BlockSize::from(bytes).unwrap();
 
