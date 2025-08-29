@@ -18,10 +18,10 @@ pub mod virt_queue {
 
     use crate::{alloc::Box, memory_model::virt_to_phys_const, phys::Phys};
 
-    enum Flag {
-        NEXT = 1,
-        WRITE = 2,
-        INDIRECT = 4,
+    pub enum Flag {
+        Next = 1,
+        Write = 2,
+        Indirect = 4,
     }
     pub const VIRT_QUEUE_SIZE: usize = 128;
 
@@ -285,13 +285,11 @@ pub mod block {
     }
 
     impl VirtioBlkConfig {
-        volatile_reg!(capacity_low);
+        volatile_reg_read!(capacity_low);
     }
 
     const VIRTIO_BLK_T_IN: u32 = 0;
     pub const VIRTIO_BLK_T_OUT: u32 = 1;
-    pub const VIRTQ_DESC_F_NEXT: u16 = 1;
-    pub const VIRTQ_DESC_F_WRITE: u16 = 2;
     #[repr(C, packed)]
     pub struct Request {
         pub request_type: u32,
@@ -412,13 +410,13 @@ impl VirtioBlk {
         let phys = virt_to_phys(ptr.as_ptr()).cast::<u8>();
         descriptor.addr = phys;
         descriptor.length = size_of::<block::Request>() as u32 - 1;
-        descriptor.flags = block::VIRTQ_DESC_F_NEXT;
+        descriptor.flags = virt_queue::Flag::Next as u16;
         descriptor.next = index2;
 
         let descriptor = self.queue.descriptor_at(index2);
         descriptor.addr = unsafe { phys.byte_add(offset_of!(block::Request, status)) };
         descriptor.length = size_of::<u8>() as u32;
-        descriptor.flags = block::VIRTQ_DESC_F_WRITE;
+        descriptor.flags = virt_queue::Flag::Write as u16;
         descriptor.next = virt_queue::DesctriptorIndex::LAST;
 
         // TODO on read, fill split into 3 blocks, and set flags to write
@@ -442,7 +440,7 @@ impl VirtioBlk {
     pub fn check_used(&mut self) {
         let i = self.queue.used_index();
         let descriptor = self.queue.descriptor_at(i);
-        if descriptor.flags & block::VIRTQ_DESC_F_NEXT == 0 {
+        if descriptor.flags & (virt_queue::Flag::Next as u16) == 0 {
             crate::console::println!("bad descriptor");
         }
         let next = descriptor.next;

@@ -36,7 +36,7 @@ impl<T> core::fmt::Debug for Phys<T> {
 
 impl<T> Clone for Phys<T> {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        *self
     }
 }
 

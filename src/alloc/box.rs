@@ -39,10 +39,10 @@ impl<T> Box<T> {
     }
 }
 
-impl<T> Into<NonNull<T>> for Box<T> {
-    fn into(self) -> NonNull<T> {
-        let ptr = self.0;
-        core::mem::forget(self);
+impl<T> From<Box<T>> for NonNull<T> {
+    fn from(val: Box<T>) -> Self {
+        let ptr = val.0;
+        core::mem::forget(val);
         ptr
     }
 }

@@ -203,7 +203,7 @@ impl<'a> TranslationTable<'a> {
                         if entry.get_type() != L2EntryType::Unmapped {
                             addr += SMALL_PAGE_SIZE;
                         } else {
-                            return Ok(self.get_offset(addr)?);
+                            return self.get_offset(addr);
                         }
                     }
                 }

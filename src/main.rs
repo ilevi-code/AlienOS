@@ -64,7 +64,8 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
         .expect("Device tree is too big");
     let device_tree = DeviceTree::from(raw_device_tree.as_mut_ptr());
 
-    init_mmu_fine_grained();
+    // TODO unmap until 0xffff_ffff, but it is used for interrupt stack
+    TranslationTable::get_kernel().unmap(memory_model::DEVICE_VIRT..0xffef_ffff);
 
     let root = device_tree.parse_root().expect("Failed to parse DTB");
 
@@ -139,6 +140,7 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
     for _ in 0..1000_usize {
         core::hint::black_box(1);
     }
+    #[allow(clippy::empty_loop)]
     loop {}
 }
 
@@ -180,17 +182,3 @@ fn disk_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {
 
 static DISK: spinlock::SpinLock<Option<drivers::virtio_blk::VirtioBlk>> =
     spinlock::SpinLock::new(None);
-
-fn init_mmu_fine_grained() {
-    let mut kern_table = TranslationTable::get_kernel();
-    kern_table.unmap(memory_model::DEVICE_VIRT..0xffef_ffff); // should unmap until 0xffff_ffff, but
-                                                              // it used for interrupt stack
-
-    // let new_uart = kern_table
-    //     .map_device(phys::Phys::<u8>::from(
-    //         console::SERIAL.load(core::sync::atomic::Ordering::Relaxed) as usize,
-    //     ))
-    //     .unwrap();
-    // console::println!("new uart at {:?}", new_uart);
-    // console::UART.store(new_uart.as_ptr(), core::sync::atomic::Ordering::Relaxed);
-}
