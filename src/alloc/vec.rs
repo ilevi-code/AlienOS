@@ -2,6 +2,7 @@ use crate::error::Error;
 use crate::{error::Result, heap::ALLOCATOR};
 use core::alloc::{GlobalAlloc, Layout};
 use core::ops::{Index, IndexMut};
+use core::slice::SliceIndex;
 use core::{ptr, slice};
 
 pub(crate) struct Vec<T> {
@@ -137,17 +138,17 @@ impl<T> Drop for Vec<T> {
     }
 }
 
-impl<T> Index<usize> for Vec<T> {
-    type Output = T;
+impl<T, I: SliceIndex<[T]>> Index<I> for Vec<T> {
+    type Output = I::Output;
 
-    fn index(&self, index: usize) -> &Self::Output {
+    fn index(&self, index: I) -> &Self::Output {
         let slice = unsafe { slice::from_raw_parts(self.buf, self.length) };
         Index::index(slice, index)
     }
 }
 
-impl<T> IndexMut<usize> for Vec<T> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+impl<T, I: SliceIndex<[T]>> IndexMut<I> for Vec<T> {
+    fn index_mut(&mut self, index: I) -> &mut Self::Output {
         let slice = unsafe { slice::from_raw_parts_mut(self.buf, self.length) };
         IndexMut::index_mut(slice, index)
     }
