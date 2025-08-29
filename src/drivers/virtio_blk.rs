@@ -25,7 +25,7 @@ pub mod virt_queue {
     }
     pub const VIRT_QUEUE_SIZE: usize = 128;
 
-    #[repr(packed)]
+    #[repr(C, packed)]
     #[derive(Clone, Copy)]
     pub struct Descriptor {
         pub addr: Phys<u8>,
@@ -35,21 +35,21 @@ pub mod virt_queue {
         pub next: DesctriptorIndex, // 0 for last
     }
 
-    #[repr(packed)]
+    #[repr(C, packed)]
     pub struct AvailableRing {
         flags: u16,
         index: u16,
         ring: [DesctriptorIndex; VIRT_QUEUE_SIZE],
     }
 
-    #[repr(packed)]
+    #[repr(C, packed)]
     struct UsedRing {
         flags: u16,
         index: u16,
         ring: [UsedElement; VIRT_QUEUE_SIZE],
     }
 
-    #[repr(packed)]
+    #[repr(C, packed)]
     #[derive(Clone, Copy)]
     struct UsedElement {
         id: DesctriptorIndex,
@@ -246,21 +246,21 @@ pub mod block {
     use core::ptr::{addr_of, addr_of_mut};
     use paste::paste;
 
-    #[repr(packed)]
+    #[repr(C, packed)]
     struct Geometry {
         cylinders: u16,
         heads: u8,
         sectros: u8,
     }
 
-    #[repr(packed)]
+    #[repr(C, packed)]
     struct Topology {
         physical_block_exp: u8,
         alignment_offset: u8,
         min_io_size: u16,
         opt_io_size: u32,
     }
-    #[repr(packed)]
+    #[repr(C, packed)]
     pub struct VirtioBlkConfig {
         capacity_low: u32,
         capacity_high: u32,
@@ -292,7 +292,7 @@ pub mod block {
     pub const VIRTIO_BLK_T_OUT: u32 = 1;
     pub const VIRTQ_DESC_F_NEXT: u16 = 1;
     pub const VIRTQ_DESC_F_WRITE: u16 = 2;
-    #[repr(packed)]
+    #[repr(C, packed)]
     pub struct Request {
         pub request_type: u32,
         pub reserved: u32,

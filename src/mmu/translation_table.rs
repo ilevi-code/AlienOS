@@ -240,18 +240,16 @@ impl<'a> TranslationTable<'a> {
         let end = (device.addr() + size_of::<T>()).align_up(SMALL_PAGE_SIZE);
         let size = end - start;
         let candidate = memory_model::DEVICE_VIRT;
-        loop {
-            let candidate = self.offset_to_virt(self.seek_hole(candidate)?);
-            self.map(
-                candidate,
-                device.addr(),
-                size,
-                PagePerm::KernOnly,
-                false,
-                true,
-            )?;
-            break Ok(NonNull::<T>::new((candidate + offset) as *mut T).unwrap());
-        }
+        let candidate = self.offset_to_virt(self.seek_hole(candidate)?);
+        self.map(
+            candidate,
+            device.addr(),
+            size,
+            PagePerm::KernOnly,
+            false,
+            true,
+        )?;
+        Ok(NonNull::<T>::new((candidate + offset) as *mut T).unwrap())
     }
 
     pub fn seek_next_region(&self, _seek_after: usize) -> Option<usize> {
