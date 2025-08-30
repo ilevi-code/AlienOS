@@ -86,11 +86,13 @@ impl InterruptController {
 }
 
 extern "C" fn irq_handler(reg_set: *mut RegSet) {
-    let mut guard = CONTROLLER.lock();
-    let controller = guard.as_mut().unwrap();
-    let int_num = controller.cpu_interface.current_interrupt_number();
-    controller.irq_handlers[int_num as usize](int_num, unsafe { &mut *reg_set });
-    controller.cpu_interface.signal_end(int_num);
+    super::without_irq(|| {
+        let mut guard = CONTROLLER.lock();
+        let controller = guard.as_mut().unwrap();
+        let int_num = controller.cpu_interface.current_interrupt_number();
+        controller.irq_handlers[int_num as usize](int_num, unsafe { &mut *reg_set });
+        controller.cpu_interface.signal_end(int_num);
+    });
 }
 
 pub(crate) fn svc_handler(reg_set: *mut RegSet) {
