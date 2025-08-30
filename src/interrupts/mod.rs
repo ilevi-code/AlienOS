@@ -4,6 +4,7 @@ mod gic_dispatcher;
 mod interrupt;
 mod interrupt_table;
 mod interrupts_controller;
+mod irq_disable;
 mod reg_set;
 mod timer;
 
@@ -11,6 +12,7 @@ pub use gic_cpu::GicCpu;
 pub use gic_dispatcher::GicDispatcher;
 pub use interrupt::Interrupt;
 pub use interrupts_controller::{InterruptController, CONTROLLER};
+pub use irq_disable::without_irq;
 pub use reg_set::RegSet;
 pub use timer::VirtualCounter;
 
