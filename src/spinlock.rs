@@ -20,16 +20,20 @@ impl SpinLockImpl {
 
     pub fn lock(&self) {
         loop {
-            match self.state.compare_exchange(
-                UNLOCKED,
-                LOCKED,
-                Ordering::Acquire,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => return,
-                Err(_) => core::hint::spin_loop(),
+            let locked = self.try_lock();
+            if !locked {
+                core::hint::spin_loop()
+            } else {
+                break;
             }
         }
+    }
+
+    #[inline]
+    pub fn try_lock(&self) -> bool {
+        self.state
+            .compare_exchange(UNLOCKED, LOCKED, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
     }
 
     #[inline]
@@ -88,6 +92,16 @@ impl<T> SpinLock<T> {
         unsafe {
             self.inner.lock();
             SpinLockGuard::new(self)
+        }
+    }
+
+    pub fn try_lock(&self) -> Option<SpinLockGuard<'_, T>> {
+        unsafe {
+            if self.inner.try_lock() {
+                Some(SpinLockGuard::new(self))
+            } else {
+                None
+            }
         }
     }
 }
