@@ -1,7 +1,4 @@
-use core::{
-    ptr::NonNull,
-    sync::atomic::{AtomicPtr, Ordering},
-};
+use core::ptr::NonNull;
 
 use crate::{SpinLock, Unique};
 
@@ -61,17 +58,12 @@ use core::ptr::{addr_of, addr_of_mut};
 use paste::paste;
 
 impl Pl011Regs {
-    pub fn reset(&mut self) {
-        self.status = 0;
-    }
-
     volatile_reg!(data);
     volatile_reg_read!(flag);
     volatile_reg!(interrupt_mask);
     volatile_reg_write!(interrupt_clear);
 }
 
-// pub static serial: SpinLock<Unique<Pl011Regs>> = AtomicPtr::new(as *mut u8);
 pub static SERIAL: SpinLock<Unique<Pl011Regs>> = SpinLock::new(Unique::from_non_null(
     NonNull::new(0x9000000 as *mut Pl011Regs).unwrap(),
 ));

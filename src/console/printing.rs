@@ -1,32 +1,63 @@
-use core::fmt::{self, Write};
+use core::fmt::{self};
 
-pub fn write_args(args: fmt::Arguments) -> Result<(), fmt::Error> {
-    let mut serial = SERIAL.lock();
-    let mut buf = super::WriteBuffer::new(&mut serial);
-    fmt::write(&mut buf, args)?;
-    buf.flush();
-    Ok(())
+use crate::{
+    console::{
+        print_buf::{PrintBuf as GenericPrintBuf, ENTRY_MAX_LENGTH},
+        write_buffer::FmtBuffer,
+        Pl011Regs,
+    },
+    SpinLock,
+};
+
+use super::pl011::SERIAL;
+type PrintBuf = GenericPrintBuf<1024>;
+
+static PRINT_BUF: SpinLock<PrintBuf> = SpinLock::new(PrintBuf::new());
+
+fn console_write(serial: &mut Pl011Regs, bytes: &[u8]) {
+    for byte in bytes {
+        serial.set_data(*byte as u32);
+    }
 }
 
-pub fn write_str(s: &str) {
-    let mut serial = SERIAL.lock();
-    let mut buf = super::WriteBuffer::new(&mut serial);
-    buf.write_str(s).unwrap();
-    buf.flush();
+fn console_flush_entris(serial: &mut Pl011Regs) {
+    loop {
+        let mut line_buf = [0; ENTRY_MAX_LENGTH];
+        let n = { PRINT_BUF.lock().pop_into(&mut line_buf) };
+        if n == 0 {
+            break;
+        }
+        console_write(serial, &line_buf[..n]);
+    }
+}
+
+pub fn write_args(args: fmt::Arguments) -> Result<(), fmt::Error> {
+    let mut buf = FmtBuffer::new();
+    fmt::write(&mut buf, args)?;
+    crate::interrupts::without_irq(|| {
+        PRINT_BUF.lock().push(buf.as_bytes());
+    });
+    crate::interrupts::without_irq(|| {
+        // If we fail to lock, this means that we are got interrupted while flusing.
+        // We have already added submitted the formatted entry, so when we return from this
+        // interrupt, we will notice the new entry.
+        if let Some(mut serial) = SERIAL.try_lock() {
+            console_flush_entris(&mut serial);
+        }
+    });
+    Ok(())
 }
 
 #[macro_export]
 macro_rules! println {
     () => {
-        $crate::console::write_str("\n")
+        $crate::console::print!("\n")
     };
     ($($arg:tt)*) => {{
-        $crate::console::write_args(format_args!($($arg)*)).unwrap();
-        $crate::console::write_str("\n");
+        $crate::console::write_args(format_args_nl!($($arg)*)).unwrap();
     }};
 }
 
-#[cfg(test)]
 #[macro_export]
 macro_rules! print {
     () => {};
@@ -35,8 +66,5 @@ macro_rules! print {
     }};
 }
 
-#[cfg(test)]
 pub use print;
 pub use println;
-
-use super::pl011::SERIAL;

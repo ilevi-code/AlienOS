@@ -1,9 +1,7 @@
 mod pl011;
+mod print_buf;
 mod printing;
 mod write_buffer;
 
 pub use pl011::{Pl011Regs, SERIAL};
-#[cfg(test)]
-pub use printing::print;
-pub use printing::{println, write_args, write_str};
-pub use write_buffer::WriteBuffer;
+pub use printing::{print, println, write_args};

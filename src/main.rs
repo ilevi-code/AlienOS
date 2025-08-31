@@ -1,5 +1,10 @@
 #![reexport_test_harness_main = "test_main"]
-#![feature(pointer_is_aligned_to, negative_impls, custom_test_frameworks)]
+#![feature(
+    pointer_is_aligned_to,
+    negative_impls,
+    custom_test_frameworks,
+    format_args_nl
+)]
 #![test_runner(crate::testing::test_runner)]
 #![no_std]
 #![no_main]
