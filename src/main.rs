@@ -69,18 +69,20 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
 
     let root = device_tree.parse_root().expect("Failed to parse DTB");
 
-    *interrupts::CONTROLLER.lock() = Some(InterruptController::new(
-        Unique::from(
-            TranslationTable::get_kernel()
-                .map_device(root.interrupt_controller.distributor)
-                .unwrap(),
-        ),
-        Unique::from(
-            TranslationTable::get_kernel()
-                .map_device(root.interrupt_controller.cpu_interface)
-                .unwrap(),
-        ),
-    ));
+    interrupts::without_irq(|| {
+        *interrupts::CONTROLLER.lock() = Some(InterruptController::new(
+            Unique::from(
+                TranslationTable::get_kernel()
+                    .map_device(root.interrupt_controller.distributor)
+                    .unwrap(),
+            ),
+            Unique::from(
+                TranslationTable::get_kernel()
+                    .map_device(root.interrupt_controller.cpu_interface)
+                    .unwrap(),
+            ),
+        ));
+    });
 
     #[cfg(test)]
     {
@@ -101,11 +103,13 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
     uart.set_interrupt_mask(mask);
     *SERIAL.lock() = uart;
 
-    interrupts::CONTROLLER
-        .lock()
-        .as_mut()
-        .unwrap()
-        .register(root.timer.virt_timer.interrupt, timer_isr);
+    interrupts::without_irq(|| {
+        interrupts::CONTROLLER
+            .lock()
+            .as_mut()
+            .unwrap()
+            .register(root.timer.virt_timer.interrupt, timer_isr);
+    });
     let mut timer = interrupts::VirtualCounter;
     timer.enable();
     timer.arm(timer.frequency());
@@ -128,13 +132,13 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
     let mut lock = DISK.lock();
     *lock = Some(blk);
     drop(lock);
-    {
+    interrupts::without_irq(|| {
         interrupts::CONTROLLER
             .lock()
             .as_mut()
             .unwrap()
             .register(Interrupt::Spi(0x2f), disk_isr);
-    }
+    });
 
     unsafe { core::arch::asm!("CPSIE i") };
     for _ in 0..1000_usize {
