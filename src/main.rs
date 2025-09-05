@@ -75,6 +75,11 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize, stack_top: us
 
     let root = device_tree.parse_root().expect("Failed to parse DTB");
 
+    interrupts::dup_stack(stack_top).expect("Failed to duplicate stack");
+    for pe_mode in [PeMode::Irq, PeMode::Abort] {
+        interrupts::setup_interrupt_stacks(pe_mode).expect("Failed to map interrupt stack");
+    }
+
     interrupts::without_irq(|| {
         *interrupts::CONTROLLER.lock() = Some(InterruptController::new(
             TranslationTable::get_kernel()
@@ -87,10 +92,6 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize, stack_top: us
                 .into(),
         ));
     });
-    interrupts::dup_stack(stack_top).expect("Failed to duplicate stack");
-    for pe_mode in [PeMode::Irq, PeMode::Abort] {
-        interrupts::setup_interrupt_stacks(pe_mode).expect("Failed to map interrupt stack");
-    }
 
     #[cfg(test)]
     {
