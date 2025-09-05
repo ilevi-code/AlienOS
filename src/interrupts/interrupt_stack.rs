@@ -2,12 +2,32 @@ use core::arch::asm;
 
 use static_assertions::const_assert;
 
-use crate::{error::Result, heap, memory_model::BOOT_STACK_SIZE, mmu::SMALL_PAGE_SIZE};
+use crate::{
+    arch::{set_stack_for_pe, PeMode},
+    error::Result,
+    heap,
+    memory_model::{self, BOOT_STACK_SIZE},
+    mmu::{PagePerm, TranslationTable, SMALL_PAGE_SIZE},
+};
 
 #[repr(align(4096))]
 struct InterruptStack(#[allow(unused)] [u8; SMALL_PAGE_SIZE]);
 
 const_assert!(align_of::<InterruptStack>() == SMALL_PAGE_SIZE);
+
+pub fn setup_interrupt_stacks(mode: PeMode) -> Result<()> {
+    let stack = heap::alloc::<InterruptStack>()?;
+    let phys = memory_model::virt_to_phys(stack as *mut ());
+    let stack = TranslationTable::get_kernel().map_stack(
+        phys,
+        size_of::<InterruptStack>(),
+        PagePerm::KernOnly,
+    )?;
+    // Stack grows down, so we need to start from highest address
+    let stack_top = stack.addr().get() + size_of::<InterruptStack>();
+    set_stack_for_pe(stack_top, mode);
+    Ok(())
+}
 
 pub fn dup_stack(stack_top: usize) -> Result<()> {
     let new_stack = heap::alloc::<InterruptStack>()?;

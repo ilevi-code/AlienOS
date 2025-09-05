@@ -35,11 +35,7 @@ impl InterruptController {
             super::interrupt_table::irq_handler_pointer =
                 irq_handler as *mut extern "C" fn(*mut RegSet);
         }
-        // TODO setup stack for:
-        // abort (mode 0b10111)
-        // FIQ (mode 0b10001)
-        // IRQ (mode 0b10010)
-        // currently, SP_abrt is 0, so the stack grow down from 0xffff_ffff.
+
         Self::set_high_exception_vector_address(addr_of!(interrupt_table_start) as usize);
         cpu_interface.enable_singaling_to_cpu();
         cpu_interface.set_prio_mask(GicCpu::ALLOW_ALL);
