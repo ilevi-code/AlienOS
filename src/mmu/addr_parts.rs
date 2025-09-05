@@ -1,8 +1,18 @@
+use core::ops::Sub;
+
 use crate::error::{Error, Result};
 
 // Offset an on address in the current table
 #[derive(Clone, Copy)]
 pub(super) struct Offset(pub(super) usize);
+
+impl Sub<Offset> for Offset {
+    type Output = usize;
+
+    fn sub(self, rhs: Offset) -> Self::Output {
+        self.0 - rhs.0
+    }
+}
 
 pub(super) struct AddrParts {
     addr: usize,

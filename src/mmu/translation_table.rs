@@ -54,6 +54,10 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
+    fn get_virt(&self, offset: Offset) -> usize {
+        self.get_range().start + offset.0
+    }
+
     fn offset_to_virt(&self, offset: Offset) -> usize {
         let address_range_base = match self.address_space {
             AddressSpace::Kernel => 0x8000_0000,
@@ -94,7 +98,7 @@ impl<'a> TranslationTable<'a> {
         Ok(())
     }
 
-    pub fn map(
+    fn map(
         &mut self,
         virt: usize,
         phys: usize,
@@ -171,43 +175,23 @@ impl<'a> TranslationTable<'a> {
         crate::arch::set_ttbr0(self.table.as_ptr() as usize);
     }
 
-    pub fn virt_to_phys(&self, virt: usize) -> Option<usize> {
-        let parts = AddrParts::from(self.get_offset(virt).ok()?);
-        let entry = &self.table[parts.l1_index()];
-        match entry.get_type() {
-            EntryKind::Unmapped => None,
-            EntryKind::Section(section_base) => Some(section_base.addr() + parts.section_offset()),
-            EntryKind::SeconLevelTable(l2_table_phys) => {
-                let l2_table = phys_to_virt_mut(&l2_table_phys);
-                let l2_entry = &l2_table[parts.l2_index()];
-                l2_entry.get_phys().map(|addr| addr + parts.page_offset())
-            }
-            _ => panic!("Unsupported entry type"),
-        }
-    }
-
-    pub fn seek_hole(&self, addr: usize) -> Result<Offset> {
-        let mut addr = addr.align_down(SMALL_PAGE_SIZE);
+    fn seek_hole(&self, offset: Offset) -> Result<Offset> {
+        let offset = Offset(offset.0.align_down(SMALL_PAGE_SIZE));
+        let mut parts = AddrParts::from(offset);
         loop {
-            let offset = self.get_offset(addr)?;
-            let parts = AddrParts::from(offset);
             let entry = &self.table[parts.l1_index()];
             match entry.get_type() {
                 EntryKind::Unmapped => return Ok(offset),
                 EntryKind::Section(_) => {
-                    if parts.l2_index() == 0 {
-                        addr += size_of::<Section>();
-                    } else {
-                        addr = addr.align_up(size_of::<Section>());
-                    }
+                    parts.try_add(size_of::<Section>())?;
                 }
                 EntryKind::SeconLevelTable(l2_table) => {
                     let l2_table = unsafe { &*memory_model::phys_to_virt(&l2_table) };
                     for entry in &l2_table[parts.l2_index()..] {
                         if entry.get_type() != L2EntryType::Unmapped {
-                            addr += SMALL_PAGE_SIZE;
+                            parts.try_add(SMALL_PAGE_SIZE)?;
                         } else {
-                            return self.get_offset(addr);
+                            return Ok(Offset(parts.addr()));
                         }
                     }
                 }
@@ -216,15 +200,15 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
-    pub fn seek_mapped(&self, addr: usize) -> Result<usize> {
-        let addr = addr.align_down(SMALL_PAGE_SIZE);
-        let offset = self.get_offset(addr)?;
+    fn seek_mapped(&self, offset: Offset) -> Result<Offset> {
         let mut parts = AddrParts::from(offset);
         loop {
             let entry = &self.table[parts.l1_index()];
             match entry.get_type() {
                 EntryKind::Unmapped => parts.try_add(SMALL_PAGE_SIZE)?,
-                EntryKind::SuperSection | EntryKind::Section(_) => break,
+                EntryKind::SuperSection | EntryKind::Section(_) => {
+                    break;
+                }
                 EntryKind::SeconLevelTable(l2_table) => {
                     let l2_table = unsafe { &*memory_model::phys_to_virt(&l2_table) };
                     for entry in &l2_table[parts.l2_index()..] {
@@ -237,7 +221,7 @@ impl<'a> TranslationTable<'a> {
                 }
             };
         }
-        Ok(self.get_range().start + parts.addr())
+        Ok(Offset(parts.addr()))
     }
 
     pub fn unmap(&mut self, range: Range<usize>) {
@@ -263,8 +247,7 @@ impl<'a> TranslationTable<'a> {
         let offset = device.addr() - start;
         let end = (device.addr() + size_of::<T>()).align_up(SMALL_PAGE_SIZE);
         let size = end - start;
-        let candidate = memory_model::DEVICE_VIRT;
-        let candidate = self.offset_to_virt(self.seek_hole(candidate)?);
+        let candidate = self.offset_to_virt(self.seek_hole(Offset(0))?);
         self.map(
             candidate,
             device.addr(),
@@ -282,9 +265,9 @@ impl<'a> TranslationTable<'a> {
         size: usize,
         perm: PagePerm,
     ) -> Result<NonNull<()>> {
-        let mut start = memory_model::DEVICE_VIRT;
+        let mut start = Offset(0);
         loop {
-            start = self.offset_to_virt(self.seek_hole(start)?);
+            start = self.seek_hole(start)?;
             let end = self.seek_mapped(start)?;
             if end - start > size + SMALL_PAGE_SIZE {
                 break;
@@ -292,16 +275,24 @@ impl<'a> TranslationTable<'a> {
                 start = end;
             }
         }
-        self.map(start, 0, SMALL_PAGE_SIZE, PagePerm::NoOne, false, false)?;
+        let stack_bottom = self.get_virt(start);
         self.map(
-            start + SMALL_PAGE_SIZE,
+            stack_bottom,
+            0,
+            SMALL_PAGE_SIZE,
+            PagePerm::NoOne,
+            false,
+            false,
+        )?;
+        self.map(
+            stack_bottom + SMALL_PAGE_SIZE,
             phys.addr(),
             size,
             perm,
             true,
             false,
         )?;
-        Ok(NonNull::new((start + SMALL_PAGE_SIZE) as *mut ()).unwrap())
+        Ok(NonNull::new((stack_bottom + SMALL_PAGE_SIZE) as *mut ()).unwrap())
     }
 
     pub fn seek_next_region(&self, _seek_after: usize) -> Option<usize> {
