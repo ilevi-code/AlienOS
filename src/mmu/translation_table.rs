@@ -38,11 +38,15 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
-    fn get_offset(&self, addr: usize) -> Result<Offset> {
-        let range = match self.address_space {
+    fn get_range(&self) -> Range<usize> {
+        match self.address_space {
             AddressSpace::Kernel => 0x8000_0000..0xffff_ffff,
             AddressSpace::User => 0x0000_0000..0x7fff_ffff,
-        };
+        }
+    }
+
+    fn get_offset(&self, addr: usize) -> Result<Offset> {
+        let range = self.get_range();
         if !range.contains(&addr) {
             Err(Error::OutOfRange)
         } else {
@@ -212,8 +216,28 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
-    pub fn seek_mapped(&self, _addr: usize) -> Option<usize> {
-        todo!();
+    pub fn seek_mapped(&self, addr: usize) -> Result<usize> {
+        let addr = addr.align_down(SMALL_PAGE_SIZE);
+        let offset = self.get_offset(addr)?;
+        let mut parts = AddrParts::from(offset);
+        loop {
+            let entry = &self.table[parts.l1_index()];
+            match entry.get_type() {
+                EntryKind::Unmapped => parts.try_add(SMALL_PAGE_SIZE)?,
+                EntryKind::SuperSection | EntryKind::Section(_) => break,
+                EntryKind::SeconLevelTable(l2_table) => {
+                    let l2_table = unsafe { &*memory_model::phys_to_virt(&l2_table) };
+                    for entry in &l2_table[parts.l2_index()..] {
+                        if entry.get_type() == L2EntryType::Unmapped {
+                            parts.try_add(SMALL_PAGE_SIZE)?;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            };
+        }
+        Ok(self.get_range().start + parts.addr())
     }
 
     pub fn unmap(&mut self, range: Range<usize>) {
@@ -250,6 +274,34 @@ impl<'a> TranslationTable<'a> {
             true,
         )?;
         Ok(NonNull::<T>::new((candidate + offset) as *mut T).unwrap())
+    }
+
+    pub fn map_stack(
+        &mut self,
+        phys: Phys<()>,
+        size: usize,
+        perm: PagePerm,
+    ) -> Result<NonNull<()>> {
+        let mut start = memory_model::DEVICE_VIRT;
+        loop {
+            start = self.offset_to_virt(self.seek_hole(start)?);
+            let end = self.seek_mapped(start)?;
+            if end - start > size + SMALL_PAGE_SIZE {
+                break;
+            } else {
+                start = end;
+            }
+        }
+        self.map(start, 0, SMALL_PAGE_SIZE, PagePerm::NoOne, false, false)?;
+        self.map(
+            start + SMALL_PAGE_SIZE,
+            phys.addr(),
+            size,
+            perm,
+            true,
+            false,
+        )?;
+        Ok(NonNull::new((start + SMALL_PAGE_SIZE) as *mut ()).unwrap())
     }
 
     pub fn seek_next_region(&self, _seek_after: usize) -> Option<usize> {

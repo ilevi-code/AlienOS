@@ -20,21 +20,6 @@ pub struct InterruptController {
 
 pub static CONTROLLER: SpinLock<Option<InterruptController>> = SpinLock::new(None);
 
-// extern crate alloc;
-// struct ExceptionHandlerStacks {
-//     data_abort_stack: alloc::boxed::Box<[u8]>,
-// }
-// fn set_data_abort_stack(stack: usize) {
-//     unsafe {
-//         core::arch::asm!(
-//             "msr CPSR_c, #0x17",
-//             "mov sp, {}",
-//             "msr CPSR_c, #0x13",
-//             in(reg) stack,
-//         );
-//     }
-// }
-
 impl InterruptController {
     pub fn new(mut dispatcher: Unique<GicDispatcher>, mut cpu_interface: Unique<GicCpu>) -> Self {
         unsafe {
