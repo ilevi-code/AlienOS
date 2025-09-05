@@ -181,7 +181,7 @@ impl<'a> TranslationTable<'a> {
         loop {
             let entry = &self.table[parts.l1_index()];
             match entry.get_type() {
-                EntryKind::Unmapped => return Ok(offset),
+                EntryKind::Unmapped => return Ok(Offset(parts.addr())),
                 EntryKind::Section(_) => {
                     parts.try_add(size_of::<Section>())?;
                 }
@@ -200,12 +200,12 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
-    fn seek_mapped(&self, offset: Offset) -> Result<Offset> {
+    fn seek_mapped(&self, offset: Offset) -> Option<Offset> {
         let mut parts = AddrParts::from(offset);
         loop {
             let entry = &self.table[parts.l1_index()];
             match entry.get_type() {
-                EntryKind::Unmapped => parts.try_add(SMALL_PAGE_SIZE)?,
+                EntryKind::Unmapped => parts.try_add(SMALL_PAGE_SIZE).ok()?,
                 EntryKind::SuperSection | EntryKind::Section(_) => {
                     break;
                 }
@@ -213,7 +213,7 @@ impl<'a> TranslationTable<'a> {
                     let l2_table = unsafe { &*memory_model::phys_to_virt(&l2_table) };
                     for entry in &l2_table[parts.l2_index()..] {
                         if entry.get_type() == L2EntryType::Unmapped {
-                            parts.try_add(SMALL_PAGE_SIZE)?;
+                            parts.try_add(SMALL_PAGE_SIZE).ok()?;
                         } else {
                             break;
                         }
@@ -221,7 +221,7 @@ impl<'a> TranslationTable<'a> {
                 }
             };
         }
-        Ok(Offset(parts.addr()))
+        Some(Offset(parts.addr()))
     }
 
     pub fn unmap(&mut self, range: Range<usize>) {
@@ -268,11 +268,18 @@ impl<'a> TranslationTable<'a> {
         let mut start = Offset(0);
         loop {
             start = self.seek_hole(start)?;
-            let end = self.seek_mapped(start)?;
-            if end - start > size + SMALL_PAGE_SIZE {
+            let end = self.seek_mapped(start);
+            let hole_size = match end {
+                Some(end) => end - start,
+                None => 0x8000_0000 - start.0,
+            };
+            if hole_size > size + SMALL_PAGE_SIZE {
                 break;
             } else {
-                start = end;
+                match end {
+                    Some(end) => start = end,
+                    None => return Err(Error::OutOfMem),
+                }
             }
         }
         let stack_bottom = self.get_virt(start);

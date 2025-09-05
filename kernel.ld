@@ -4,7 +4,7 @@ PHDRS {
 }
 SECTIONS
 {
- . = 0xc0018000;
+ . = 0x80018000;
  kernel_start = .;
  entry : { kernel_entry.o(entry) }
  interrupt_table ALIGN(0x40): { interrupt_table.o(interrupt_table) }

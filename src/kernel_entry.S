@@ -3,8 +3,8 @@
 .type kernel_entry,%function
 .cfi_startproc
 kernel_entry:
-add	sp, #-2147483648
-add	r2, #-2147483648
+add	sp, #0x40000000
+add	r2, #0x40000000
 BL main
 .cfi_endproc
 

@@ -40,7 +40,7 @@ impl AddrParts {
 
     pub(super) fn try_add(&mut self, bytes: usize) -> Result<()> {
         self.addr += bytes;
-        if self.addr > 0x8000_0000 {
+        if self.addr >= 0x8000_0000 {
             Err(Error::OutOfRange)
         } else {
             Ok(())

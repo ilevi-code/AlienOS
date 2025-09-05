@@ -18,5 +18,5 @@ SECTIONS
  }
  /* Since we map ourselves to the higher 1GB of the RAM, we
   * need to jump to the correct address */
- kernel_entry = 0xc0018000;
+ kernel_entry = 0x80018000;
 }

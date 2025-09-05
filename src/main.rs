@@ -70,9 +70,6 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize, stack_top: us
         .expect("Device tree is too big");
     let device_tree = DeviceTree::from(raw_device_tree.as_mut_ptr());
 
-    // TODO unmap until 0xffff_ffff, but it is used for interrupt stack
-    TranslationTable::get_kernel().unmap(memory_model::DEVICE_VIRT..0xffff_ffff);
-
     let root = device_tree.parse_root().expect("Failed to parse DTB");
 
     interrupts::dup_stack(stack_top).expect("Failed to duplicate stack");

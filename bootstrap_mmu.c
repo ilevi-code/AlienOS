@@ -33,8 +33,6 @@ translation_table_t* mmu_init()
         bootstrap_table.entries[i] = 0;
     }
 
-    // Map GIC
-    map_sections(&bootstrap_table, 0x8010000, 0x8010000, SECTION_SIZE, SECTION_AP(PERM_NONE) | TT_ENTRY_B);
     // Map UART
     map_sections(&bootstrap_table, 0x9000000, 0x9000000, SECTION_SIZE, SECTION_AP(PERM_NONE) | TT_ENTRY_B);
 
@@ -42,9 +40,7 @@ translation_table_t* mmu_init()
     map_sections(&bootstrap_table, start, start, bootstrap_size, SECTION_AP(PERM_NONE));
 
     // Map the kernel to the higher 1GB
-    map_sections(&bootstrap_table, 0xc0000000, 0x40000000, 0x10000000, SECTION_AP(PERM_NONE));
-    // Stack for interrupts
-    map_sections(&bootstrap_table, 0xfff00000, 0x48000000, SECTION_SIZE, SECTION_AP(PERM_NONE));
+    map_sections(&bootstrap_table, 0x80000000, 0x40000000, 0x10000000, SECTION_AP(PERM_NONE));
 
     // We need this, because we are currently executing from the lower addresses
     set_ttbr0(&bootstrap_table.entries[0]);
