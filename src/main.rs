@@ -32,6 +32,7 @@ mod testing;
 use core::slice;
 
 use alloc::Vec;
+use arch::PeMode;
 use console::Pl011Regs;
 use console::SERIAL;
 use device_tree::{DeviceTree, Memory};
@@ -54,7 +55,7 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize, stack_top: us
 
     let memory = device_tree
         .parse_node_type::<Memory>("memory")
-        .expect("DeviceTree should contains \"memory\" node");
+        .expect("DeviceTree must contains a \"memory\" node");
     heap::init(
         get_kernel_location().end,
         KERN_LINK + memory.addresses.len(),
@@ -76,18 +77,17 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize, stack_top: us
 
     interrupts::without_irq(|| {
         *interrupts::CONTROLLER.lock() = Some(InterruptController::new(
-            Unique::from(
-                TranslationTable::get_kernel()
-                    .map_device(root.interrupt_controller.distributor)
-                    .unwrap(),
-            ),
-            Unique::from(
-                TranslationTable::get_kernel()
-                    .map_device(root.interrupt_controller.cpu_interface)
-                    .unwrap(),
-            ),
+            TranslationTable::get_kernel()
+                .map_device(root.interrupt_controller.distributor)
+                .expect("Failed to map interrupt-controller distributor")
+                .into(),
+            TranslationTable::get_kernel()
+                .map_device(root.interrupt_controller.cpu_interface)
+                .expect("Failed to map interrupt-controller cpu-interface")
+                .into(),
         ));
     });
+    interrupts::dup_stack(stack_top).expect("Failed to duplicate stack");
 
     #[cfg(test)]
     {
