@@ -1,4 +1,4 @@
-use core::arch::asm;
+use core::{arch::asm, ptr::NonNull};
 
 use static_assertions::const_assert;
 
@@ -15,14 +15,19 @@ struct InterruptStack(#[allow(unused)] [u8; SMALL_PAGE_SIZE]);
 
 const_assert!(align_of::<InterruptStack>() == SMALL_PAGE_SIZE);
 
-pub fn setup_interrupt_stacks(mode: PeMode) -> Result<()> {
+fn alloc_stack() -> Result<NonNull<InterruptStack>> {
     let stack = heap::alloc::<InterruptStack>()?;
     let phys = memory_model::virt_to_phys(stack as *mut ());
-    let stack = TranslationTable::get_kernel().map_stack(
+    let ptr = TranslationTable::get_kernel().map_stack(
         phys,
         size_of::<InterruptStack>(),
         PagePerm::KernOnly,
     )?;
+    Ok(ptr.cast::<InterruptStack>())
+}
+
+pub fn setup_interrupt_stacks(mode: PeMode) -> Result<()> {
+    let stack = alloc_stack()?;
     // Stack grows down, so we need to start from highest address
     let stack_top = stack.addr().get() + size_of::<InterruptStack>();
     set_stack_for_pe(stack_top, mode);
@@ -30,15 +35,17 @@ pub fn setup_interrupt_stacks(mode: PeMode) -> Result<()> {
 }
 
 pub fn dup_stack(stack_top: usize) -> Result<()> {
-    let new_stack = heap::alloc::<InterruptStack>()?;
+    let new_stack = alloc_stack()?.as_ptr();
     let stack_low_addr = stack_top - BOOT_STACK_SIZE;
     const_assert!(size_of::<InterruptStack>() == BOOT_STACK_SIZE);
 
-    let new_stack_top = new_stack.addr() + size_of::<InterruptStack>();
     unsafe {
         (new_stack as *mut u8)
             .copy_from_nonoverlapping(stack_low_addr as *const u8, BOOT_STACK_SIZE);
     }
+
+    // Stack grows down, so we need to start from highest address
+    let new_stack_top = new_stack.addr() + size_of::<InterruptStack>();
     unsafe {
         // $sp = new_stack_top - (offset_in_current_stack);
         asm!(
