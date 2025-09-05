@@ -200,7 +200,7 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
-    fn seek_mapped(&self, offset: Offset) -> Option<Offset> {
+    fn seek_mapped(&self, offset: Offset, limit: usize) -> Option<Offset> {
         let mut parts = AddrParts::from(offset);
         loop {
             let entry = &self.table[parts.l1_index()];
@@ -220,6 +220,9 @@ impl<'a> TranslationTable<'a> {
                     }
                 }
             };
+            if parts.addr() - offset.0 > limit {
+                break;
+            }
         }
         Some(Offset(parts.addr()))
     }
@@ -268,7 +271,7 @@ impl<'a> TranslationTable<'a> {
         let mut start = Offset(0);
         loop {
             start = self.seek_hole(start)?;
-            let end = self.seek_mapped(start);
+            let end = self.seek_mapped(start, size + SMALL_PAGE_SIZE);
             let hole_size = match end {
                 Some(end) => end - start,
                 None => 0x8000_0000 - start.0,
