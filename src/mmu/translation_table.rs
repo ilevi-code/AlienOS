@@ -78,7 +78,7 @@ impl<'a> TranslationTable<'a> {
 
         for (virt, phys) in virt_range.zip(phys_range) {
             let parts = AddrParts::from(self.get_offset(virt)?);
-            let entry = self.get_l1(parts.l1_index);
+            let entry = self.get_l1(parts.l1_index());
 
             match entry.get_type() {
                 EntryKind::Unmapped => (),
@@ -122,20 +122,20 @@ impl<'a> TranslationTable<'a> {
         cachable: bool,
         bufferable: bool,
     ) -> Result<()> {
-        let entry = self.get_l1(addr.l1_index);
+        let entry = self.get_l1(addr.l1_index());
 
         let l2_table = match entry.get_type() {
             EntryKind::SeconLevelTable(l2_table) => phys_to_virt_mut(&l2_table),
-            EntryKind::Unmapped => self.create_l2table(addr.l1_index)?,
+            EntryKind::Unmapped => self.create_l2table(addr.l1_index())?,
             _ => return Err(Error::Remap),
         };
 
-        if l2_table[addr.l2_index].get_type() != L2EntryType::Unmapped {
+        if l2_table[addr.l2_index()].get_type() != L2EntryType::Unmapped {
             return Err(Error::Remap);
         }
 
-        l2_table[addr.l2_index].set_phys(phys, L2EntryType::Small, cachable, bufferable);
-        l2_table[addr.l2_index].set_perm(perm);
+        l2_table[addr.l2_index()].set_phys(phys, L2EntryType::Small, cachable, bufferable);
+        l2_table[addr.l2_index()].set_perm(perm);
         Ok(())
     }
 
@@ -169,14 +169,14 @@ impl<'a> TranslationTable<'a> {
 
     pub fn virt_to_phys(&self, virt: usize) -> Option<usize> {
         let parts = AddrParts::from(self.get_offset(virt).ok()?);
-        let entry = &self.table[parts.l1_index];
+        let entry = &self.table[parts.l1_index()];
         match entry.get_type() {
             EntryKind::Unmapped => None,
             EntryKind::Section(section_base) => Some(section_base.addr() + parts.section_offset()),
             EntryKind::SeconLevelTable(l2_table_phys) => {
                 let l2_table = phys_to_virt_mut(&l2_table_phys);
-                let l2_entry = &l2_table[parts.l2_index];
-                l2_entry.get_phys().map(|addr| addr + parts.page_offset)
+                let l2_entry = &l2_table[parts.l2_index()];
+                l2_entry.get_phys().map(|addr| addr + parts.page_offset())
             }
             _ => panic!("Unsupported entry type"),
         }
@@ -187,11 +187,11 @@ impl<'a> TranslationTable<'a> {
         loop {
             let offset = self.get_offset(addr)?;
             let parts = AddrParts::from(offset);
-            let entry = &self.table[parts.l1_index];
+            let entry = &self.table[parts.l1_index()];
             match entry.get_type() {
                 EntryKind::Unmapped => return Ok(offset),
                 EntryKind::Section(_) => {
-                    if parts.l2_index == 0 {
+                    if parts.l2_index() == 0 {
                         addr += size_of::<Section>();
                     } else {
                         addr = addr.align_up(size_of::<Section>());
@@ -199,7 +199,7 @@ impl<'a> TranslationTable<'a> {
                 }
                 EntryKind::SeconLevelTable(l2_table) => {
                     let l2_table = unsafe { &*memory_model::phys_to_virt(&l2_table) };
-                    for entry in &l2_table[parts.l2_index..] {
+                    for entry in &l2_table[parts.l2_index()..] {
                         if entry.get_type() != L2EntryType::Unmapped {
                             addr += SMALL_PAGE_SIZE;
                         } else {
@@ -224,7 +224,7 @@ impl<'a> TranslationTable<'a> {
                 return;
             };
             let parts = AddrParts::from(offset);
-            let entry = &mut self.table[parts.l1_index];
+            let entry = &mut self.table[parts.l1_index()];
             match entry.get_type() {
                 EntryKind::Unmapped => (),
                 EntryKind::Section(_) => entry.unmap(),
