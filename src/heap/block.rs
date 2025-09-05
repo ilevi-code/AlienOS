@@ -53,7 +53,10 @@ impl Block {
     pub(super) fn check_fit(&self, layout: BlockLayout) -> SizeFit {
         let offset =
             ((self as *const Block) as *const u8).align_offset(layout.align().byte_count());
-        let size_after_align = self.size.byte_count() - offset;
+        let size_after_align = match self.size.byte_count().checked_sub(offset) {
+            Some(size) => size,
+            None => return SizeFit::Misfit,
+        };
         match size_after_align.cmp(&layout.size().byte_count()) {
             Ordering::Less => SizeFit::Misfit,
             Ordering::Equal if offset == 0 => SizeFit::Exact,
