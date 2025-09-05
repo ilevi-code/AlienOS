@@ -18,7 +18,6 @@ mod error;
 mod gic;
 mod heap;
 mod interrupts;
-mod kernel_location;
 mod memory_model;
 mod mmu;
 mod num;
@@ -36,7 +35,7 @@ use arch::PeMode;
 use console::Pl011Regs;
 use console::SERIAL;
 use device_tree::{DeviceTree, Memory};
-use kernel_location::get_kernel_location;
+use memory_model::{get_kernel_location, KERN_LINK};
 use mmu::TranslationTable;
 use spinlock::SpinLock;
 
@@ -44,8 +43,6 @@ use crate::{
     alloc::Unique,
     interrupts::{Interrupt, InterruptController},
 };
-
-const KERN_LINK: usize = 0xc000_0000;
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc, unreachable_code)]

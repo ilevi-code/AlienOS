@@ -3,8 +3,6 @@ use core::alloc::{GlobalAlloc, Layout};
 use crate::{
     console::println,
     error::{Error, Result},
-    memory_model::virt_to_phys,
-    phys::Phys,
     spinlock::SpinLock,
 };
 
@@ -43,7 +41,7 @@ pub fn init(kern_end: usize, ram_end: usize) {
     let mut size = ram_end - kern_end;
     for current_scale in ["", "K", "M", "G"] {
         scale = current_scale;
-        if size / 1024 == 0 {
+        if size < 1024 {
             break;
         }
         size /= 1024;
