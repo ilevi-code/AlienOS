@@ -48,7 +48,7 @@ const KERN_LINK: usize = 0xc000_0000;
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc, unreachable_code)]
-pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
+pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize, stack_top: usize) -> ! {
     let dtb_address = memory_model::phys_to_virt(&phys::Phys::<u8>::from(dtb));
     let device_tree = DeviceTree::from(dtb_address);
 
