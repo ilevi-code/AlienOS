@@ -23,6 +23,7 @@ mod mmu;
 mod num;
 mod panic_handler;
 mod phys;
+mod sched;
 mod semihosting;
 mod spinlock;
 mod step_range;
