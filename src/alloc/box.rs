@@ -37,6 +37,18 @@ impl<T> Box<T> {
         let ptr = NonNull::new(ptr.cast::<T>()).ok_or(Error::OutOfMem)?;
         Ok(Box(ptr))
     }
+
+    pub(crate) fn into_non_null(b: Self) -> NonNull<T> {
+        let b = core::mem::ManuallyDrop::new(b);
+        b.0
+    }
+
+    /// # Safety
+    ///
+    /// The pointer must point to a block of memory allocated by the global allocator.
+    pub(crate) unsafe fn from_non_null(ptr: NonNull<T>) -> Self {
+        Box(ptr)
+    }
 }
 
 impl<T> From<Box<T>> for NonNull<T> {
