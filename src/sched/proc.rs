@@ -1,5 +1,8 @@
+use atomic_enum::atomic_enum;
+
 use crate::{
     alloc::{Box, Vec},
+    error::{Error, Result},
     mmu::SMALL_PAGE_SIZE,
     spinlock::SpinLock,
 };
@@ -12,10 +15,12 @@ enum Errno {
 struct User<T: ?Sized>(T);
 
 trait File {
-    fn read(&mut self, buf: User<[u8]>) -> Result<(), Errno>;
+    fn read(&mut self, buf: User<[u8]>) -> core::result::Result<(), Errno>;
 }
 
-use core::{arch::global_asm, ops::Deref, sync::atomic::AtomicUsize};
+use core::{
+    arch::global_asm, marker::PhantomData, ops::Deref, ptr::null_mut, sync::atomic::AtomicUsize,
+};
 
 struct Arc<T> {
     ptr: *const T,
@@ -30,42 +35,89 @@ impl<T> Deref for Arc<T> {
     }
 }
 
-enum State {
+#[atomic_enum]
+#[derive(PartialEq)]
+pub enum State {
+    Sleeping,
+    Runnable,
     Running,
     Zombie,
 }
 
-struct PageTable(usize);
+pub struct PageTable(pub usize);
 
-struct Process {
-    pid: u32,
-    regs: [usize; 16],
-    page_table: PageTable,
-    kern_stack: Box<[u8; SMALL_PAGE_SIZE]>,
-    fd: Vec<Option<SpinLock<Box<dyn File>>>>,
-    state: State,
+#[repr(align(4096))]
+pub struct KernelStack(#[allow(unused)] pub [u8; SMALL_PAGE_SIZE]);
+
+pub struct Process {
+    pub pid: u32,
+    pub page_table: PageTable,
+    pub kern_stack: Box<KernelStack>,
+    pub sp: *mut u8,
+    pub fd: SpinLock<Vec<Option<SpinLock<Box<dyn File>>>>>,
+    pub state: AtomicState,
+}
+
+pub struct StackPointer<'stack> {
+    base: *mut u8,
+    size: usize,
+    _phantom: PhantomData<&'stack u8>,
+}
+
+impl<'stack> StackPointer<'stack> {
+    pub fn from_slice(s: &'stack mut [u8]) -> Self {
+        Self {
+            base: unsafe { s.as_mut_ptr().add(s.len()) },
+            size: s.len(),
+            _phantom: PhantomData,
+        }
+    }
+    pub fn alloc_frame<Frame>(&mut self) -> Result<&mut Frame> {
+        let mut size = size_of::<Frame>();
+        let add_to_align = self.base.align_offset(align_of::<Frame>());
+        if add_to_align != 0 {
+            size += size_of::<Frame>() - add_to_align;
+        }
+        match self.size.checked_sub(size) {
+            Some(new_size) => {
+                // Guarenteed by creation the pointer has at least `size` consequitive bytes, which
+                // means this will not overflow.
+                self.base = unsafe { self.base.sub(size) };
+                let frame = self.base as *mut Frame;
+                self.size = new_size;
+                // We do not hangle alignment
+                Ok(unsafe { &mut *frame })
+            }
+            None => Err(Error::OutOfMem),
+        }
+    }
+
+    pub fn into_sp(self) -> *mut u8 {
+        self.base
+    }
+}
+
+impl Process {
+    pub fn with_pid(pid: u32) -> Result<Self> {
+        Ok(Self {
+            pid,
+            page_table: PageTable(0),
+            kern_stack: Box::<KernelStack>::zeroed()?,
+            sp: null_mut(),
+            fd: SpinLock::new(Vec::new()),
+            state: AtomicState::new(State::Runnable),
+        })
+    }
 }
 
 extern "C" {
-    fn stack_switch_unchecked(other_stack: *mut u8);
+    pub fn return_to_user_mode(other_stack: *mut u8);
 }
 
 global_asm!(
     ".global return_to_user_mode",
     "return_to_user_mode:",
-    "ldmfd sp!, {{r0-r12}}",
-    "rfeia sp!",
-    "movs pc, lr"
-);
-
-global_asm!(
-    ".global stack_switch",
-    "stack_switch:",
-    "stm sp!, {{r1-r15}}",
-    "MSR cpsr, r0",
-    "push r0",
-    "mov sp, r0",
-    "pop r0",
-    "mrs cpsr, r0",
-    "ldmfd sp!, {{r1-r15}}",
+    "ldm sp, {{sp}}^",
+    "add sp, sp, 4",
+    "rfe sp!",
 );

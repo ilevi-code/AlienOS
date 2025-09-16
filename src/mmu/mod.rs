@@ -7,4 +7,4 @@ mod translation_table;
 
 pub use page_permission::PagePerm;
 pub use per_cpu::PerCpu;
-pub use translation_table::{TranslationTable, SMALL_PAGE_SIZE};
+pub use translation_table::{AddressSpace, TranslationTable, SMALL_PAGE_SIZE};

@@ -130,26 +130,27 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize, stack_top: us
     let mut r = alloc::Box::<drivers::virtio_blk::block::Request>::zeroed().unwrap();
     r.request_type = drivers::virtio_blk::block::VIRTIO_BLK_T_OUT;
     r.data[0] = 1;
-    unsafe { core::arch::asm!("CPSID i") };
     blk.write(r);
 
     let mut lock = DISK.lock();
     *lock = Some(blk);
     drop(lock);
-    interrupts::without_irq(|| {
-        interrupts::CONTROLLER
-            .lock()
-            .as_mut()
-            .unwrap()
-            .register(Interrupt::Spi(0x2f), disk_isr);
-    });
+    // interrupts::without_irq(|| {
+    //     interrupts::CONTROLLER
+    //         .lock()
+    //         .as_mut()
+    //         .unwrap()
+    //         .register(Interrupt::Spi(0x2f), disk_isr);
+    // });
 
-    unsafe { core::arch::asm!("CPSIE i") };
     for _ in 0..1000_usize {
         core::hint::black_box(1);
     }
-    #[allow(clippy::empty_loop)]
-    loop {}
+
+    sched::setup_init_proc().expect("Failed to setup init");
+    sched::sched();
+    // #[allow(clippy::empty_loop)]
+    // loop {}
 }
 
 fn console_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {

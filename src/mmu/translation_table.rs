@@ -19,7 +19,7 @@ const L1_ENTRY_COUNT: usize = 2096;
 
 type L1Table = [Entry; L1_ENTRY_COUNT];
 
-enum AddressSpace {
+pub enum AddressSpace {
     Kernel,
     User,
 }
@@ -73,6 +73,10 @@ impl<'a> TranslationTable<'a> {
         })
     }
 
+    pub fn get_base(&self) -> usize {
+        self.table.as_ptr() as usize
+    }
+
     pub fn map_sections(
         &mut self,
         virt: usize,
@@ -98,7 +102,7 @@ impl<'a> TranslationTable<'a> {
         Ok(())
     }
 
-    fn map(
+    pub fn map(
         &mut self,
         virt: usize,
         phys: usize,
@@ -172,7 +176,7 @@ impl<'a> TranslationTable<'a> {
     }
 
     pub fn apply_user(&self) {
-        crate::arch::set_ttbr0(self.table.as_ptr() as usize);
+        crate::arch::set_ttbr0(memory_model::virt_to_phys(self.table.as_ptr() as *mut u8).addr());
     }
 
     fn seek_hole(&self, offset: Offset) -> Result<Offset> {
