@@ -51,11 +51,11 @@ pub fn get_cpsr() -> usize {
 }
 
 pub enum PeMode {
-    User = 0b0000,
-    Fiq = 0b0001,
-    Irq = 0b0010,
-    Supervisor = 0b0011,
-    Abort = 0b0111,
+    User = 0b10000,
+    Fiq = 0b10001,
+    Irq = 0b10010,
+    Supervisor = 0b10011,
+    Abort = 0b10111,
 }
 
 pub fn set_stack_for_pe(stack: usize, mode: PeMode) {
