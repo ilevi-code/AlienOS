@@ -12,12 +12,16 @@ pub(crate) struct Vec<T> {
 }
 
 impl<T> Vec<T> {
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             buf: ptr::null_mut(),
             capacity: 0,
             length: 0,
         }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.length
     }
 
     pub(crate) fn layout_of_capacity(capacity: usize) -> Result<Layout> {
@@ -78,6 +82,19 @@ impl<T> Vec<T> {
         unsafe {
             new.copy_from_nonoverlapping(self.buf, self.length);
         }
+    }
+
+    pub(crate) fn push(&mut self, value: T) -> Result<()> {
+        if self.length == self.capacity {
+            self.grow(1)?
+        }
+        let len = self.length;
+        unsafe {
+            let end = self.as_mut_ptr().add(len);
+            ptr::write(end, value);
+        }
+        self.length += 1;
+        Ok(())
     }
 
     fn deallocate(&mut self) {
