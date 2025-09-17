@@ -1,6 +1,6 @@
 /// Use to represent a pointer to a **physical** memory
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Phys<T>(*mut T);
+pub struct Phys<T: ?Sized>(*mut T);
 
 impl<T> Phys<T> {
     pub fn addr(&self) -> usize {
@@ -13,6 +13,27 @@ impl<T> Phys<T> {
 
     pub unsafe fn byte_add(self, count: usize) -> Self {
         Self(self.0.byte_add(count))
+    }
+}
+
+impl<T> Phys<[T]> {
+    pub fn addr(&self) -> usize {
+        (self.0 as *mut T) as usize
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn with_addr(self, addr: usize) -> *const [T] {
+        self.0.with_addr(addr)
+    }
+}
+
+impl<T> From<*const [T]> for Phys<[T]> {
+    fn from(value: *const [T]) -> Self {
+        // TODO make phys immutable pointer
+        Self(value as *mut [T])
     }
 }
 
