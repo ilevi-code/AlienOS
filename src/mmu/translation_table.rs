@@ -102,7 +102,7 @@ impl<'a> TranslationTable<'a> {
         Ok(())
     }
 
-    pub fn map(
+    fn map(
         &mut self,
         virt: usize,
         phys: usize,
@@ -272,23 +272,7 @@ impl<'a> TranslationTable<'a> {
         size: usize,
         perm: PagePerm,
     ) -> Result<NonNull<()>> {
-        let mut start = Offset(0);
-        loop {
-            start = self.seek_hole(start)?;
-            let end = self.seek_mapped(start, size + SMALL_PAGE_SIZE);
-            let hole_size = match end {
-                Some(end) => end - start,
-                None => 0x8000_0000 - start.0,
-            };
-            if hole_size > size + SMALL_PAGE_SIZE {
-                break;
-            } else {
-                match end {
-                    Some(end) => start = end,
-                    None => return Err(Error::OutOfMem),
-                }
-            }
-        }
+        let start = self.find_hole(size)?;
         let stack_bottom = self.get_virt(start);
         self.map(
             stack_bottom,
@@ -307,6 +291,42 @@ impl<'a> TranslationTable<'a> {
             false,
         )?;
         Ok(NonNull::new((stack_bottom + SMALL_PAGE_SIZE) as *mut ()).unwrap())
+    }
+
+    pub fn map_memory(&mut self, phys: Phys<[u8]>, perm: PagePerm) -> Result<&'static mut [u8]> {
+        let page_offset = Self::page_offset(&phys);
+        let size = phys.len() + page_offset;
+        let table_offset = self.find_hole(size)?;
+        let virt = self.get_virt(table_offset);
+        self.map(virt, phys.addr(), size, perm, true, true)?;
+        let virt = phys.with_addr(virt + page_offset) as *mut [u8];
+        // let virt = unsafe { virt.byte_add(page_offset) };
+        Ok(unsafe { &mut *virt })
+    }
+
+    fn page_offset<T>(phys: &Phys<[T]>) -> usize {
+        phys.addr() & 0xfff
+    }
+
+    fn find_hole(&mut self, size: usize) -> Result<Offset> {
+        let mut start = Offset(0);
+        loop {
+            start = self.seek_hole(start)?;
+            let end = self.seek_mapped(start, size + SMALL_PAGE_SIZE);
+            let hole_size = match end {
+                Some(end) => end - start,
+                None => 0x8000_0000 - start.0,
+            };
+            if hole_size > size + SMALL_PAGE_SIZE {
+                break;
+            } else {
+                match end {
+                    Some(end) => start = end,
+                    None => return Err(Error::OutOfMem),
+                }
+            }
+        }
+        Ok(start)
     }
 
     pub fn seek_next_region(&self, _seek_after: usize) -> Option<usize> {

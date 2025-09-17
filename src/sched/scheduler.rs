@@ -8,8 +8,9 @@ use crate::{
     alloc::{Arc, Vec},
     arch::{self, PeMode},
     error::Result,
-    memory_model::virt_to_phys,
+    memory_model::{virt_to_phys, virt_to_phys_slice},
     mmu::{AddressSpace, PagePerm, TranslationTable, SMALL_PAGE_SIZE},
+    phys::Phys,
     sched::proc::{PageTable, Process, StackPointer, State},
     spinlock::SpinLock,
 };
@@ -17,9 +18,26 @@ use crate::{
 static PROCCESSES: SpinLock<Vec<Arc<Process>>> = SpinLock::new(Vec::new());
 static NEXT_PID: AtomicU32 = AtomicU32::new(1);
 
-global_asm!(".global init_code", "init_code:", "svc #0");
+global_asm!(
+    ".global init_code",
+    "init_code:",
+    "svc #0",
+    ".global init_code_end",
+    "init_code_end:",
+);
+
 extern "C" {
     static init_code: u8;
+    static init_code_end: u8;
+}
+
+fn get_init_code() -> *const [u8] {
+    unsafe {
+        core::slice::from_raw_parts(
+            &raw const init_code,
+            (&raw const init_code_end).offset_from_unsigned(&raw const init_code),
+        ) as *const [u8]
+    }
 }
 
 #[repr(C)]
@@ -41,23 +59,15 @@ pub fn setup_init_proc() -> Result<()> {
     let mut init = Process::with_pid(pid)?;
 
     let mut mappings = TranslationTable::new(AddressSpace::User)?;
-    // TODO replace with map_mem
-    mappings.map(
-        SMALL_PAGE_SIZE,
-        virt_to_phys(addr_of!(init_code) as *mut u8).addr(),
-        SMALL_PAGE_SIZE,
-        PagePerm::UserRo,
-        true,
-        true,
-    )?;
+    let mapped = mappings.map_memory(virt_to_phys_slice(get_init_code()), PagePerm::UserRo)?;
     init.page_table = PageTable(mappings.get_base());
     mappings.apply_user();
 
     let mut stack = StackPointer::from_slice(&mut init.kern_stack.0);
     let rfe_stack = stack.alloc_frame::<ReturnFromExceptionStack>()?;
     rfe_stack.cspr = PeMode::User as usize;
-    rfe_stack.sp = 0; // TODO
-    rfe_stack.pc = SMALL_PAGE_SIZE + (addr_of!(init_code) as usize & 0xfff);
+    rfe_stack.sp = 0; // TODO allocate stack
+    rfe_stack.pc = mapped.as_ptr().addr();
     let switch_frame = stack.alloc_frame::<SwitchFrame>()?;
     switch_frame.regs = [0; 12];
     switch_frame.pc = crate::sched::proc::return_to_user_mode as usize;
