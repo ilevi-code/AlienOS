@@ -48,8 +48,8 @@ use crate::{
 #[no_mangle]
 #[allow(clippy::missing_safety_doc, unreachable_code)]
 pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize, stack_top: usize) -> ! {
-    let dtb_address = memory_model::phys_to_virt(&phys::Phys::<u8>::from(dtb));
-    let device_tree = DeviceTree::from(dtb_address);
+    let dtb = phys::PhysMut::<u8>::from(dtb).into_virt();
+    let device_tree = DeviceTree::from(dtb);
 
     let memory = device_tree
         .parse_node_type::<Memory>("memory")
@@ -61,10 +61,7 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize, stack_top: us
 
     let mut raw_device_tree = Vec::<u8>::new();
     raw_device_tree
-        .extend_from_slice(slice::from_raw_parts(
-            dtb_address as *const u8,
-            device_tree.len(),
-        ))
+        .extend_from_slice(slice::from_raw_parts(dtb, device_tree.len()))
         .expect("Device tree is too big");
     let device_tree = DeviceTree::from(raw_device_tree.as_mut_ptr());
 

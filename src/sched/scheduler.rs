@@ -1,6 +1,5 @@
 use core::{
     arch::global_asm,
-    ptr::addr_of,
     sync::atomic::{AtomicU32, Ordering},
 };
 
@@ -8,8 +7,7 @@ use crate::{
     alloc::{Arc, Vec},
     arch::{self, PeMode},
     error::Result,
-    memory_model::{virt_to_phys, virt_to_phys_slice},
-    mmu::{AddressSpace, PagePerm, TranslationTable, SMALL_PAGE_SIZE},
+    mmu::{AddressSpace, PagePerm, TranslationTable},
     phys::Phys,
     sched::proc::{PageTable, Process, StackPointer, State},
     spinlock::SpinLock,
@@ -59,7 +57,7 @@ pub fn setup_init_proc() -> Result<()> {
     let mut init = Process::with_pid(pid)?;
 
     let mut mappings = TranslationTable::new(AddressSpace::User)?;
-    let mapped = mappings.map_memory(virt_to_phys_slice(get_init_code()), PagePerm::UserRo)?;
+    let mapped = mappings.map_memory(Phys::from_virt(get_init_code()), PagePerm::UserRo)?;
     init.page_table = PageTable(mappings.get_base());
     mappings.apply_user();
 

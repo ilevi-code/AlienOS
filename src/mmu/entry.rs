@@ -3,7 +3,7 @@ use core::slice::SliceIndex;
 
 use crate::mmu::l2entry::L2Entry;
 use crate::mmu::PagePerm;
-use crate::phys::Phys;
+use crate::phys::{Phys, PhysMut};
 
 const L1_ENTRY_COUNT: usize = 4096;
 const L2_ENTRY_COUNT: usize = 256;
@@ -38,6 +38,13 @@ pub(super) enum EntryKind {
     SuperSection,
 }
 
+pub(super) enum EntryKindMut {
+    Unmapped,
+    SeconLevelTable(PhysMut<SeconLevelTable>),
+    Section(PhysMut<Section>),
+    SuperSection,
+}
+
 impl Entry {
     const SUPERSECTION_BIT: usize = 1 << 18;
     const SECTION_MASK: usize = 0xfff00000;
@@ -62,11 +69,34 @@ impl Entry {
         }
     }
 
+    pub fn get_type_mut(&mut self) -> EntryKindMut {
+        match self.value & 0b11 {
+            Self::IGNORED_ENTRY_MAGIC => EntryKindMut::Unmapped,
+            Self::SECOND_LEVEL_TABLE_MAGIC => EntryKindMut::SeconLevelTable(self.as_l2_table_mut()),
+            Self::SECTION_MAGIC => {
+                if self.is_supersection() {
+                    EntryKindMut::SuperSection
+                } else {
+                    EntryKindMut::Section(self.as_section_mut())
+                }
+            }
+            _ => panic!("Unsupported entry type"),
+        }
+    }
+
     fn as_l2_table(&self) -> Phys<SeconLevelTable> {
         (self.value & Self::L2_TABLE_MASK).into()
     }
 
+    fn as_l2_table_mut(&mut self) -> PhysMut<SeconLevelTable> {
+        (self.value & Self::L2_TABLE_MASK).into()
+    }
+
     fn as_section(&self) -> Phys<Section> {
+        (self.value & Self::SECTION_MASK).into()
+    }
+
+    fn as_section_mut(&self) -> PhysMut<Section> {
         (self.value & Self::SECTION_MASK).into()
     }
 
@@ -77,7 +107,7 @@ impl Entry {
             | (Self::SECTION_MAGIC);
     }
 
-    pub(super) fn set_l2_table(&mut self, phys: Phys<SeconLevelTable>, domain: u8) {
+    pub(super) fn set_l2_table(&mut self, phys: PhysMut<SeconLevelTable>, domain: u8) {
         self.value = (phys.addr() & Self::L2_TABLE_MASK)
             | ((domain as usize) << 5)
             | Self::SECOND_LEVEL_TABLE_MAGIC;

@@ -4,15 +4,16 @@ use core::ptr::NonNull;
 
 use crate::console::println;
 use crate::error::{Error, Result};
-use crate::memory_model::phys_to_virt_mut;
+use crate::heap;
 use crate::mmu::addr_parts::{AddrParts, Offset};
 use crate::mmu::entry::{Entry, EntryKind, SeconLevelTable, Section};
 use crate::mmu::l2entry::L2EntryType;
 use crate::mmu::PagePerm;
 use crate::num::{AlignDown, AlignUp};
-use crate::phys::Phys;
+use crate::phys::{Phys, PhysMut};
 use crate::step_range::StepRange;
-use crate::{heap, memory_model};
+
+use super::entry::EntryKindMut;
 
 pub const SMALL_PAGE_SIZE: usize = 4096;
 const L1_ENTRY_COUNT: usize = 2096;
@@ -136,9 +137,9 @@ impl<'a> TranslationTable<'a> {
     ) -> Result<()> {
         let entry = self.get_l1(addr.l1_index());
 
-        let l2_table = match entry.get_type() {
-            EntryKind::SeconLevelTable(l2_table) => phys_to_virt_mut(&l2_table),
-            EntryKind::Unmapped => self.create_l2table(addr.l1_index())?,
+        let l2_table = match entry.get_type_mut() {
+            EntryKindMut::SeconLevelTable(l2_table) => unsafe { &mut *l2_table.into_virt() },
+            EntryKindMut::Unmapped => self.create_l2table(addr.l1_index())?,
             _ => return Err(Error::Remap),
         };
 
@@ -163,10 +164,10 @@ impl<'a> TranslationTable<'a> {
             EntryKind::Unmapped => (),
             _ => return Err(Error::Remap),
         };
-        entry.set_l2_table(memory_model::virt_to_phys(new_l2_table), 0);
+        entry.set_l2_table(PhysMut::from_virt(new_l2_table), 0);
         // TODO Ok(phys_to_virt(frame))
-        match self.table[l1_index].get_type() {
-            EntryKind::SeconLevelTable(table) => Ok(phys_to_virt_mut(&table)),
+        match self.table[l1_index].get_type_mut() {
+            EntryKindMut::SeconLevelTable(table) => Ok(unsafe { &mut *table.into_virt() }),
             _ => panic!("Entry isn't second-level-table after creation"),
         }
     }
@@ -176,7 +177,7 @@ impl<'a> TranslationTable<'a> {
     }
 
     pub fn apply_user(&self) {
-        crate::arch::set_ttbr0(memory_model::virt_to_phys(self.table.as_ptr() as *mut u8).addr());
+        crate::arch::set_ttbr0(Phys::from_virt(self.table.as_ptr()).addr());
     }
 
     fn seek_hole(&self, offset: Offset) -> Result<Offset> {
@@ -190,7 +191,7 @@ impl<'a> TranslationTable<'a> {
                     parts.try_add(size_of::<Section>())?;
                 }
                 EntryKind::SeconLevelTable(l2_table) => {
-                    let l2_table = unsafe { &*memory_model::phys_to_virt(&l2_table) };
+                    let l2_table = unsafe { &*l2_table.into_virt() };
                     for entry in &l2_table[parts.l2_index()..] {
                         if entry.get_type() != L2EntryType::Unmapped {
                             parts.try_add(SMALL_PAGE_SIZE)?;
@@ -214,7 +215,7 @@ impl<'a> TranslationTable<'a> {
                     break;
                 }
                 EntryKind::SeconLevelTable(l2_table) => {
-                    let l2_table = unsafe { &*memory_model::phys_to_virt(&l2_table) };
+                    let l2_table = unsafe { &*l2_table.into_virt() };
                     for entry in &l2_table[parts.l2_index()..] {
                         if entry.get_type() == L2EntryType::Unmapped {
                             parts.try_add(SMALL_PAGE_SIZE).ok()?;
@@ -293,15 +294,14 @@ impl<'a> TranslationTable<'a> {
         Ok(NonNull::new((stack_bottom + SMALL_PAGE_SIZE) as *mut ()).unwrap())
     }
 
-    pub fn map_memory(&mut self, phys: Phys<[u8]>, perm: PagePerm) -> Result<&'static mut [u8]> {
+    pub fn map_memory(&mut self, phys: Phys<[u8]>, perm: PagePerm) -> Result<&'static [u8]> {
         let page_offset = Self::page_offset(&phys);
         let size = phys.len() + page_offset;
         let table_offset = self.find_hole(size)?;
         let virt = self.get_virt(table_offset);
         self.map(virt, phys.addr(), size, perm, true, true)?;
-        let virt = phys.with_addr(virt + page_offset) as *mut [u8];
-        // let virt = unsafe { virt.byte_add(page_offset) };
-        Ok(unsafe { &mut *virt })
+        let virt = phys.with_addr(virt + page_offset);
+        Ok(unsafe { &*virt })
     }
 
     fn page_offset<T>(phys: &Phys<[T]>) -> usize {

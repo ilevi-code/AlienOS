@@ -9,30 +9,17 @@ use crate::phys::Phys;
 const MEM_START: usize = 0x4000_0000;
 /// The kernel is linked to run in this address
 pub const KERN_LINK: usize = 0x8000_0000;
-const PHYS_TO_VIRT: usize = KERN_LINK - MEM_START;
+pub const PHYS_TO_VIRT: usize = KERN_LINK - MEM_START;
 
 // See `init_stack` in boot.ld
 pub const BOOT_STACK_SIZE: usize = 0x1000;
-
-pub fn phys_to_virt<T>(phys: &Phys<T>) -> *mut T {
-    (phys.addr() + PHYS_TO_VIRT) as *mut T
-}
 
 pub fn virt_to_phys<T>(phys: *mut T) -> Phys<T> {
     Phys::from(phys as usize - PHYS_TO_VIRT)
 }
 
-pub fn virt_to_phys_slice<T>(phys: *const [T]) -> Phys<[T]> {
-    Phys::from(unsafe { phys.byte_sub(PHYS_TO_VIRT) })
-}
-
 pub fn virt_to_phys_const<T>(phys: *const T) -> Phys<T> {
     Phys::from(phys as usize - PHYS_TO_VIRT)
-}
-
-pub fn phys_to_virt_mut<T>(phys: &Phys<T>) -> &'static mut T {
-    let virt = phys_to_virt(phys);
-    unsafe { &mut *virt }
 }
 
 // defined by linker script

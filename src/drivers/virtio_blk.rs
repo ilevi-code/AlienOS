@@ -2,7 +2,7 @@ use core::{arch::asm, mem::offset_of, ptr::NonNull};
 
 use crate::{
     alloc::{Box, Unique},
-    memory_model::{phys_to_virt, virt_to_phys},
+    phys::PhysMut,
 };
 
 #[derive(Debug)]
@@ -407,7 +407,7 @@ impl VirtioBlk {
 
         let descriptor = self.queue.descriptor_at(index);
         let ptr = Into::<NonNull<block::Request>>::into(data);
-        let phys = virt_to_phys(ptr.as_ptr()).cast::<u8>();
+        let phys = PhysMut::from_virt(ptr.as_ptr()).cast::<u8>();
         descriptor.addr = phys;
         descriptor.length = size_of::<block::Request>() as u32 - 1;
         descriptor.flags = virt_queue::Flag::Next as u16;
@@ -446,7 +446,7 @@ impl VirtioBlk {
         let next = descriptor.next;
         let descriptor = self.queue.descriptor_at(next);
         let addr = descriptor.addr;
-        let addr = phys_to_virt(&addr);
+        let addr = addr.into_virt();
         crate::console::println!("status: {:x}", unsafe { addr.read_volatile() });
     }
 }

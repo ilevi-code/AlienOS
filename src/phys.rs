@@ -1,6 +1,11 @@
+use crate::memory_model;
+
 /// Use to represent a pointer to a **physical** memory
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Phys<T: ?Sized>(*mut T);
+pub struct Phys<T: ?Sized>(*const T);
+
+#[cfg_attr(test, derive(PartialEq))]
+pub struct PhysMut<T: ?Sized>(*mut T);
 
 impl<T> Phys<T> {
     pub fn addr(&self) -> usize {
@@ -8,11 +13,41 @@ impl<T> Phys<T> {
     }
 
     pub fn cast<U>(self) -> Phys<U> {
-        Phys::<U>(self.0 as *mut U)
+        Phys::<U>(self.0 as *const U)
     }
 
     pub unsafe fn byte_add(self, count: usize) -> Self {
         Self(self.0.byte_add(count))
+    }
+
+    pub fn into_virt(self) -> *const T {
+        unsafe { self.0.byte_add(memory_model::PHYS_TO_VIRT) }
+    }
+}
+
+impl<T: ?Sized> Phys<T> {
+    pub fn from_virt(ptr: *const T) -> Self {
+        Self(unsafe { ptr.byte_sub(memory_model::PHYS_TO_VIRT) })
+    }
+}
+
+impl<T> PhysMut<T> {
+    pub fn addr(&self) -> usize {
+        self.0.addr()
+    }
+
+    pub fn cast<U>(self) -> Phys<U> {
+        Phys::<U>(self.0 as *const U)
+    }
+
+    pub fn from_virt(ptr: *mut T) -> Self {
+        Self(unsafe { ptr.byte_sub(memory_model::PHYS_TO_VIRT) })
+    }
+}
+
+impl<T: ?Sized> PhysMut<T> {
+    pub fn into_virt(self) -> *mut T {
+        unsafe { self.0.byte_add(memory_model::PHYS_TO_VIRT) }
     }
 }
 
@@ -39,6 +74,12 @@ impl<T> From<*const [T]> for Phys<[T]> {
 
 impl<T> From<usize> for Phys<T> {
     fn from(value: usize) -> Phys<T> {
+        Self(value as *const T)
+    }
+}
+
+impl<T> From<usize> for PhysMut<T> {
+    fn from(value: usize) -> Self {
         Self(value as *mut T)
     }
 }
