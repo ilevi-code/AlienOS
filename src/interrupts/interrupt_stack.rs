@@ -6,23 +6,26 @@ use crate::{
     arch::{set_stack_for_pe, PeMode},
     error::Result,
     heap,
-    memory_model::{self, BOOT_STACK_SIZE},
+    memory_model::BOOT_STACK_SIZE,
     mmu::{PagePerm, TranslationTable, SMALL_PAGE_SIZE},
+    phys::Phys,
 };
 
 #[repr(align(4096))]
 struct InterruptStack(#[allow(unused)] [u8; SMALL_PAGE_SIZE]);
 
+impl InterruptStack {
+    fn as_slice_ptr(this: *const Self) -> *const [u8] {
+        this as *const [u8; SMALL_PAGE_SIZE] as *const [u8]
+    }
+}
+
 const_assert!(align_of::<InterruptStack>() == SMALL_PAGE_SIZE);
 
 fn alloc_stack() -> Result<NonNull<InterruptStack>> {
-    let stack = heap::alloc::<InterruptStack>()?;
-    let phys = memory_model::virt_to_phys(stack as *mut ());
-    let ptr = TranslationTable::get_kernel().map_stack(
-        phys,
-        size_of::<InterruptStack>(),
-        PagePerm::KernOnly,
-    )?;
+    let stack = heap::alloc::<InterruptStack>()?.cast_const();
+    let phys = Phys::from_virt(InterruptStack::as_slice_ptr(stack));
+    let ptr = TranslationTable::get_kernel().map_stack(phys, PagePerm::KernOnly)?;
     Ok(ptr.cast::<InterruptStack>())
 }
 

@@ -111,9 +111,9 @@ pub mod virt_queue {
 
         pub fn areas(&self) -> (usize, usize, usize) {
             (
-                virt_to_phys_const(addr_of!(self.descriptors)).addr(),
-                virt_to_phys_const(addr_of!(self.available)).addr(),
-                virt_to_phys_const(addr_of!(self.used)).addr(),
+                Phys::from_virt(addr_of!(self.descriptors)).addr(),
+                Phys::from_virt(addr_of!(self.available)).addr(),
+                Phys::from_virt(addr_of!(self.used)).addr(),
             )
         }
 

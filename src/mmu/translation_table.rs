@@ -267,13 +267,8 @@ impl<'a> TranslationTable<'a> {
         Ok(NonNull::<T>::new((candidate + offset) as *mut T).unwrap())
     }
 
-    pub fn map_stack(
-        &mut self,
-        phys: Phys<()>,
-        size: usize,
-        perm: PagePerm,
-    ) -> Result<NonNull<()>> {
-        let start = self.find_hole(size)?;
+    pub fn map_stack(&mut self, phys: Phys<[u8]>, perm: PagePerm) -> Result<NonNull<()>> {
+        let start = self.find_hole(phys.len())?;
         let stack_bottom = self.get_virt(start);
         self.map(
             stack_bottom,
@@ -286,7 +281,7 @@ impl<'a> TranslationTable<'a> {
         self.map(
             stack_bottom + SMALL_PAGE_SIZE,
             phys.addr(),
-            size,
+            phys.len(),
             perm,
             true,
             false,
