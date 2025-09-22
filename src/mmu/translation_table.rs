@@ -14,8 +14,8 @@ use crate::phys::{Phys, PhysMut};
 use crate::step_range::StepRange;
 
 use super::entry::EntryKindMut;
+use super::PAGE_SIZE;
 
-pub const SMALL_PAGE_SIZE: usize = 4096;
 const L1_ENTRY_COUNT: usize = 2096;
 
 type L1Table = [Entry; L1_ENTRY_COUNT];
@@ -112,8 +112,8 @@ impl<'a> TranslationTable<'a> {
         cachable: bool,
         bufferable: bool,
     ) -> Result<()> {
-        let virt_range = StepRange::new(virt, virt + len, SMALL_PAGE_SIZE);
-        let phys_range = StepRange::new(phys, phys + len, SMALL_PAGE_SIZE);
+        let virt_range = StepRange::new(virt, virt + len, PAGE_SIZE);
+        let phys_range = StepRange::new(phys, phys + len, PAGE_SIZE);
 
         println!(
             "mapping virt 0x{:x}[0..0x{:x}] to phys 0x{:x}",
@@ -181,7 +181,7 @@ impl<'a> TranslationTable<'a> {
     }
 
     fn seek_hole(&self, offset: Offset) -> Result<Offset> {
-        let offset = Offset(offset.0.align_down(SMALL_PAGE_SIZE));
+        let offset = Offset(offset.0.align_down(PAGE_SIZE));
         let mut parts = AddrParts::from(offset);
         loop {
             let entry = &self.table[parts.l1_index()];
@@ -194,7 +194,7 @@ impl<'a> TranslationTable<'a> {
                     let l2_table = unsafe { &*l2_table.into_virt() };
                     for entry in &l2_table[parts.l2_index()..] {
                         if entry.get_type() != L2EntryType::Unmapped {
-                            parts.try_add(SMALL_PAGE_SIZE)?;
+                            parts.try_add(PAGE_SIZE)?;
                         } else {
                             return Ok(Offset(parts.addr()));
                         }
@@ -210,7 +210,7 @@ impl<'a> TranslationTable<'a> {
         loop {
             let entry = &self.table[parts.l1_index()];
             match entry.get_type() {
-                EntryKind::Unmapped => parts.try_add(SMALL_PAGE_SIZE).ok()?,
+                EntryKind::Unmapped => parts.try_add(PAGE_SIZE).ok()?,
                 EntryKind::SuperSection | EntryKind::Section(_) => {
                     break;
                 }
@@ -218,7 +218,7 @@ impl<'a> TranslationTable<'a> {
                     let l2_table = unsafe { &*l2_table.into_virt() };
                     for entry in &l2_table[parts.l2_index()..] {
                         if entry.get_type() == L2EntryType::Unmapped {
-                            parts.try_add(SMALL_PAGE_SIZE).ok()?;
+                            parts.try_add(PAGE_SIZE).ok()?;
                         } else {
                             break;
                         }
@@ -251,9 +251,9 @@ impl<'a> TranslationTable<'a> {
     }
 
     pub fn map_device<T>(&mut self, device: Phys<T>) -> Result<NonNull<T>> {
-        let start = device.addr().align_down(SMALL_PAGE_SIZE);
+        let start = device.addr().align_down(PAGE_SIZE);
         let offset = device.addr() - start;
-        let end = (device.addr() + size_of::<T>()).align_up(SMALL_PAGE_SIZE);
+        let end = (device.addr() + size_of::<T>()).align_up(PAGE_SIZE);
         let size = end - start;
         let candidate = self.offset_to_virt(self.seek_hole(Offset(0))?);
         self.map(
@@ -270,23 +270,16 @@ impl<'a> TranslationTable<'a> {
     pub fn map_stack(&mut self, phys: Phys<[u8]>, perm: PagePerm) -> Result<NonNull<()>> {
         let start = self.find_hole(phys.len())?;
         let stack_bottom = self.get_virt(start);
+        self.map(stack_bottom, 0, PAGE_SIZE, PagePerm::NoOne, false, false)?;
         self.map(
-            stack_bottom,
-            0,
-            SMALL_PAGE_SIZE,
-            PagePerm::NoOne,
-            false,
-            false,
-        )?;
-        self.map(
-            stack_bottom + SMALL_PAGE_SIZE,
+            stack_bottom + PAGE_SIZE,
             phys.addr(),
             phys.len(),
             perm,
             true,
             false,
         )?;
-        Ok(NonNull::new((stack_bottom + SMALL_PAGE_SIZE) as *mut ()).unwrap())
+        Ok(NonNull::new((stack_bottom + PAGE_SIZE) as *mut ()).unwrap())
     }
 
     pub fn map_memory(&mut self, phys: Phys<[u8]>, perm: PagePerm) -> Result<&'static [u8]> {
@@ -307,12 +300,12 @@ impl<'a> TranslationTable<'a> {
         let mut start = Offset(0);
         loop {
             start = self.seek_hole(start)?;
-            let end = self.seek_mapped(start, size + SMALL_PAGE_SIZE);
+            let end = self.seek_mapped(start, size + PAGE_SIZE);
             let hole_size = match end {
                 Some(end) => end - start,
                 None => 0x8000_0000 - start.0,
             };
-            if hole_size > size + SMALL_PAGE_SIZE {
+            if hole_size > size + PAGE_SIZE {
                 break;
             } else {
                 match end {

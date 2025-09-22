@@ -3,7 +3,7 @@ use atomic_enum::atomic_enum;
 use crate::{
     alloc::{Box, Vec},
     error::{Error, Result},
-    mmu::SMALL_PAGE_SIZE,
+    mmu::PAGE_SIZE,
     spinlock::SpinLock,
 };
 
@@ -47,7 +47,7 @@ pub enum State {
 pub struct PageTable(pub usize);
 
 #[repr(align(4096))]
-pub struct KernelStack(#[allow(unused)] pub [u8; SMALL_PAGE_SIZE]);
+pub struct KernelStack(#[allow(unused)] pub [u8; PAGE_SIZE]);
 
 type FdTable = SpinLock<Vec<Option<SpinLock<Box<dyn File>>>>>;
 

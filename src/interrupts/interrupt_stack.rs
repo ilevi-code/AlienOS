@@ -7,20 +7,11 @@ use crate::{
     error::Result,
     heap,
     memory_model::BOOT_STACK_SIZE,
-    mmu::{PagePerm, TranslationTable, SMALL_PAGE_SIZE},
+    mmu::{Page, PagePerm, TranslationTable},
     phys::Phys,
 };
 
-#[repr(align(4096))]
-struct InterruptStack(#[allow(unused)] [u8; SMALL_PAGE_SIZE]);
-
-impl InterruptStack {
-    fn as_slice_ptr(this: *const Self) -> *const [u8] {
-        this as *const [u8; SMALL_PAGE_SIZE] as *const [u8]
-    }
-}
-
-const_assert!(align_of::<InterruptStack>() == SMALL_PAGE_SIZE);
+type InterruptStack = Page;
 
 fn alloc_stack() -> Result<NonNull<InterruptStack>> {
     let stack = heap::alloc::<InterruptStack>()?.cast_const();
