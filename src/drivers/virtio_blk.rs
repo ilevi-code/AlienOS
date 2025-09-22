@@ -16,7 +16,7 @@ fn data_sync() {
 pub mod virt_queue {
     use core::ptr::addr_of;
 
-    use crate::{alloc::Box, memory_model::virt_to_phys_const, phys::Phys};
+    use crate::{alloc::Box, phys::Phys};
 
     pub enum Flag {
         Next = 1,
