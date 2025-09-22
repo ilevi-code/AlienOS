@@ -8,13 +8,13 @@ use crate::{
 };
 
 enum Errno {
-    FAULT,
-    INVAL,
+    Fault,
+    Inval,
 }
 
-struct User<T: ?Sized>(T);
+pub struct User<T: ?Sized>(T);
 
-trait File {
+pub trait File {
     fn read(&mut self, buf: User<[u8]>) -> core::result::Result<(), Errno>;
 }
 
@@ -49,12 +49,15 @@ pub struct PageTable(pub usize);
 #[repr(align(4096))]
 pub struct KernelStack(#[allow(unused)] pub [u8; SMALL_PAGE_SIZE]);
 
+type FdTable = SpinLock<Vec<Option<SpinLock<Box<dyn File>>>>>;
+
 pub struct Process {
     pub pid: u32,
     pub page_table: PageTable,
     pub kern_stack: Box<KernelStack>,
     pub sp: *mut u8,
-    pub fd: SpinLock<Vec<Option<SpinLock<Box<dyn File>>>>>,
+    #[allow(unused)]
+    pub fd: FdTable,
     pub state: AtomicState,
 }
 

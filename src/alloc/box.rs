@@ -8,7 +8,6 @@ use core::{mem::MaybeUninit, ptr::NonNull};
 pub(crate) struct Box<T: ?Sized>(NonNull<T>);
 
 impl<T> Box<T> {
-    #[must_use]
     pub(crate) fn new_uninit() -> Result<Box<MaybeUninit<T>>> {
         // SAFETY:
         // Layout is of a valid type, and initialization is encofrced with `MaybeUninit`
@@ -17,7 +16,6 @@ impl<T> Box<T> {
         Ok(Box(ptr))
     }
 
-    #[must_use]
     pub(crate) fn new(value: T) -> Result<Box<T>> {
         let mut uninit = Self::new_uninit()?;
         // SAFETY:
@@ -29,7 +27,6 @@ impl<T> Box<T> {
         Ok(unsafe { Box::<MaybeUninit<T>>::assume_init(uninit) })
     }
 
-    #[must_use]
     pub(crate) fn zeroed() -> Result<Box<T>> {
         // SAFETY:
         // Layout is of a valid type, and initialization is encofrced with by zeroing

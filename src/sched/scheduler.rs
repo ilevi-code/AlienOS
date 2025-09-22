@@ -31,10 +31,10 @@ extern "C" {
 
 fn get_init_code() -> *const [u8] {
     unsafe {
-        core::slice::from_raw_parts(
+        core::ptr::slice_from_raw_parts(
             &raw const init_code,
             (&raw const init_code_end).offset_from_unsigned(&raw const init_code),
-        ) as *const [u8]
+        )
     }
 }
 
@@ -91,12 +91,16 @@ fn find_runnable_proc() -> Arc<Process> {
     let guard = PROCCESSES.lock();
     loop {
         for i in 0..guard.len() {
-            if let Ok(_) = guard[i].state.compare_exchange(
-                State::Runnable,
-                State::Running,
-                Ordering::Acquire,
-                Ordering::Relaxed,
-            ) {
+            if guard[i]
+                .state
+                .compare_exchange(
+                    State::Runnable,
+                    State::Running,
+                    Ordering::Acquire,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
+            {
                 return Arc::clone(&guard[i]);
             }
         }

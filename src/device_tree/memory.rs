@@ -27,21 +27,18 @@ impl<'data> Parse<'data> for Memory {
                 Token::Nop => continue,
                 Token::End => todo!(),
             };
-            match name {
-                "reg" => {
-                    let mut reader = BytesReader::from_bytes(value);
-                    let start = reader
-                        .read_u64()
-                        .ok_or(FdtParseError::ValueTooShort("memory", "reg"))?
-                        as usize;
-                    let size = reader
-                        .read_u64()
-                        .ok_or(FdtParseError::ValueTooShort("memory", "reg"))?
-                        as usize;
-                    addresses = Some(start..start + size);
-                }
-                _ => (),
-            };
+            if name == "reg" {
+                let mut reader = BytesReader::from_bytes(value);
+                let start = reader
+                    .read_u64()
+                    .ok_or(FdtParseError::ValueTooShort("memory", "reg"))?
+                    as usize;
+                let size = reader
+                    .read_u64()
+                    .ok_or(FdtParseError::ValueTooShort("memory", "reg"))?
+                    as usize;
+                addresses = Some(start..start + size);
+            }
         }
         let addresses = addresses.ok_or(FdtParseError::MissingField("memory", "reg"))?;
         Ok(Memory { addresses })

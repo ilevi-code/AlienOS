@@ -28,22 +28,19 @@ impl<'data> Parse<'data> for Timer {
                 Token::Nop => continue,
                 Token::End => todo!(),
             };
-            match name {
-                "interrupts" => {
-                    let mut reader: InterruptIterator = BytesReader::from_bytes(value).into();
-                    let _secure = reader
-                        .next()
-                        .ok_or(FdtParseError::ValueTooShort("timer", "interrupts"))??;
-                    let _non_secure = reader
-                        .next()
-                        .ok_or(FdtParseError::ValueTooShort("timer", "interrupts"))??;
-                    let virt = reader
-                        .next()
-                        .ok_or(FdtParseError::ValueTooShort("timer", "interrupts"))??;
-                    virt_timer = Some(virt);
-                }
-                _ => (),
-            };
+            if name == "interrupts" {
+                let mut reader: InterruptIterator = BytesReader::from_bytes(value).into();
+                let _secure = reader
+                    .next()
+                    .ok_or(FdtParseError::ValueTooShort("timer", "interrupts"))??;
+                let _non_secure = reader
+                    .next()
+                    .ok_or(FdtParseError::ValueTooShort("timer", "interrupts"))??;
+                let virt = reader
+                    .next()
+                    .ok_or(FdtParseError::ValueTooShort("timer", "interrupts"))??;
+                virt_timer = Some(virt);
+            }
         }
         let virt_timer = virt_timer.ok_or(FdtParseError::MissingField("timer", "interrupts"))?;
         Ok(Timer { virt_timer })
