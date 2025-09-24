@@ -1,56 +1,50 @@
-use core::{arch::asm, ptr::NonNull};
-
-use static_assertions::const_assert;
+use core::{arch::asm, hint, ptr::NonNull};
 
 use crate::{
     arch::{set_stack_for_pe, PeMode},
-    error::Result,
+    error::{Error, Result},
     heap,
-    memory_model::BOOT_STACK_SIZE,
     mmu::{Page, PagePerm, TranslationTable},
     phys::Phys,
 };
 
-type InterruptStack = Page;
+type Stack = Page;
 
-fn alloc_stack() -> Result<NonNull<InterruptStack>> {
-    let stack = heap::alloc::<InterruptStack>()?.cast_const();
-    let phys = Phys::from_virt(InterruptStack::as_slice_ptr(stack));
+fn alloc_stack() -> Result<NonNull<Stack>> {
+    let stack = heap::alloc::<Stack>()?.cast_const();
+    let phys = Phys::from_virt(Stack::as_slice_ptr(stack));
     let ptr = TranslationTable::get_kernel().map_stack(phys, PagePerm::KernOnly)?;
-    Ok(ptr.cast::<InterruptStack>())
+    Ok(ptr.cast::<Stack>())
 }
 
 pub fn setup_interrupt_stacks(mode: PeMode) -> Result<()> {
     let stack = alloc_stack()?;
     // Stack grows down, so we need to start from highest address
-    let stack_top = stack.addr().get() + size_of::<InterruptStack>();
+    let stack_top = stack.addr().get() + size_of::<Stack>();
     set_stack_for_pe(stack_top, mode);
     Ok(())
 }
 
-pub fn dup_stack(stack_top: usize) -> Result<()> {
-    let new_stack = alloc_stack()?.as_ptr();
-    let stack_low_addr = stack_top - BOOT_STACK_SIZE;
-    const_assert!(size_of::<InterruptStack>() == BOOT_STACK_SIZE);
-
-    unsafe {
-        (new_stack as *mut u8)
-            .copy_from_nonoverlapping(stack_low_addr as *const u8, BOOT_STACK_SIZE);
-    }
+pub fn call_in_new_stack(f: extern "C" fn() -> !) -> Error {
+    let new_stack = match alloc_stack() {
+        Ok(stack) => stack.as_ptr(),
+        Err(e) => return e,
+    };
 
     // Stack grows down, so we need to start from highest address
-    let new_stack_top = new_stack.addr() + size_of::<InterruptStack>();
+    let stack_top = new_stack.addr() + size_of::<Stack>();
+
     unsafe {
-        // $sp = new_stack_top - (offset_in_current_stack);
         asm!(
-            "sub {tmp}, {stack_top}, sp", // calculate offset in current stack
-            "sub {tmp}, {new_stack_top}, {tmp}", // apply the offset to current stack
-            "mov sp, {tmp}",
-            new_stack_top = in(reg) new_stack_top,
+            "mov sp, {stack_top}",
+            "bx {f}",
             stack_top = in(reg) stack_top,
-            tmp = out(reg) _,
+            f = in(reg) f,
         );
     }
-
-    Ok(())
+    // SAFETY:
+    // We branch to `f` without linking, so `f` can never return here.
+    unsafe {
+        hint::unreachable_unchecked();
+    }
 }

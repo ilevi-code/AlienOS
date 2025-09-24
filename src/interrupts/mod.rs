@@ -12,7 +12,7 @@ mod timer;
 pub use gic_cpu::GicCpu;
 pub use gic_dispatcher::GicDispatcher;
 pub use interrupt::Interrupt;
-pub use interrupt_stack::{dup_stack, setup_interrupt_stacks};
+pub use interrupt_stack::{call_in_new_stack, setup_interrupt_stacks};
 pub use interrupts_controller::{InterruptController, CONTROLLER};
 pub use irq_disable::without_irq;
 pub use reg_set::RegSet;

@@ -67,7 +67,6 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize, stack_top: us
 
     let root = device_tree.parse_root().expect("Failed to parse DTB");
 
-    interrupts::dup_stack(stack_top).expect("Failed to duplicate stack");
     for pe_mode in [PeMode::Irq, PeMode::Abort] {
         interrupts::setup_interrupt_stacks(pe_mode).expect("Failed to map interrupt stack");
     }
@@ -145,9 +144,12 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize, stack_top: us
     }
 
     sched::setup_init_proc().expect("Failed to setup init");
-    sched::sched();
-    // #[allow(clippy::empty_loop)]
-    // loop {}
+    let e = interrupts::call_in_new_stack(run_scheduler);
+    panic!("Failed to call scheduler in new stack {:?}", e);
+}
+
+extern "C" fn run_scheduler() -> ! {
+    sched::sched()
 }
 
 fn console_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {

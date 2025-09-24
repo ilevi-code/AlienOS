@@ -60,12 +60,12 @@ pub enum PeMode {
 
 pub fn set_stack_for_pe(stack: usize, mode: PeMode) {
     let cpsr = get_cpsr();
-    let request_cpsr = (cpsr & !0xf) | mode as usize;
+    let request_cpsr = (cpsr & !0x1f) | mode as usize;
     unsafe {
         core::arch::asm!(
-            "msr CPSR_c, {request_cpsr}",
+            "msr CPSR, {request_cpsr}",
             "mov sp, {stack}",
-            "msr CPSR_c, {cpsr}",
+            "msr CPSR, {cpsr}",
             stack = in(reg) stack,
             request_cpsr = in(reg) request_cpsr,
             cpsr = in(reg) cpsr,
