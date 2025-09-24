@@ -18,6 +18,7 @@ static PROCCESSES: SpinLock<Vec<Arc<Process>>> = SpinLock::new(Vec::new());
 static NEXT_PID: AtomicU32 = AtomicU32::new(1);
 
 global_asm!(
+    ".section \".text\", \"ax\"",
     ".global init_code",
     "init_code:",
     // Push "/sbin/init" to stack
@@ -29,7 +30,7 @@ global_asm!(
     "movt r2, #0",
     "push {{r0, r1, r2}}",
     "mov r0, sp",
-    "mov r0, 0",
+    "mov r1, 0",
     "push {{r0}}",
     "mov r1, sp",
     "svc #0",
@@ -129,6 +130,7 @@ extern "C" {
 }
 
 global_asm!(
+    ".section \".text\", \"ax\"",
     ".global stack_switch_unchecked",
     "stack_switch_unchecked:",
     "push {{r1-r12, lr}}",

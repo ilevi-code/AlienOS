@@ -118,6 +118,7 @@ extern "C" {
 }
 
 global_asm!(
+    ".section \".text\", \"ax\"",
     ".global return_to_user_mode",
     "return_to_user_mode:",
     "ldm sp, {{sp}}^",
