@@ -20,6 +20,18 @@ static NEXT_PID: AtomicU32 = AtomicU32::new(1);
 global_asm!(
     ".global init_code",
     "init_code:",
+    // Push "/sbin/init" to stack
+    "movw r0, #0x732f",
+    "movt r0, #0x6962",
+    "movw r1, #0x2f6e",
+    "movt r1, #0x6e69",
+    "movw r2, #0x7469",
+    "movt r2, #0",
+    "push {{r0, r1, r2}}",
+    "mov r0, sp",
+    "mov r0, 0",
+    "push {{r0}}",
+    "mov r1, sp",
     "svc #0",
     ".global init_code_end",
     "init_code_end:",
