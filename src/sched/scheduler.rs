@@ -58,15 +58,19 @@ pub fn setup_init_proc() -> Result<()> {
     let mut init = Process::with_pid(pid)?;
 
     let mut mappings = TranslationTable::new(AddressSpace::User)?;
-    let mapped = mappings.map_memory(Phys::from_virt(get_init_code()), PagePerm::UserRo)?;
+    let mapped_code = mappings.map_memory(Phys::from_virt(get_init_code()), PagePerm::UserRo)?;
     init.page_table = PageTable(mappings.get_base());
     mappings.apply_user();
+
+    let stack = heap::alloc::<Page>()?;
+    let mapped_stack =
+        mappings.map_memory(Phys::from_virt(Page::as_slice_ptr(stack)), PagePerm::UserRo)?;
 
     let mut stack = StackPointer::from_slice(&mut init.kern_stack.0);
     let rfe_stack = stack.alloc_frame::<ReturnFromExceptionStack>()?;
     rfe_stack.cspr = PeMode::User as usize;
-    rfe_stack.sp = 0; // TODO allocate stack
-    rfe_stack.pc = mapped.as_ptr().addr();
+    rfe_stack.sp = mapped_stack.as_ptr().addr() + size_of::<Page>();
+    rfe_stack.pc = mapped_code.as_ptr().addr();
     let switch_frame = stack.alloc_frame::<SwitchFrame>()?;
     switch_frame.regs = [0; 12];
     switch_frame.pc = crate::sched::proc::return_to_user_mode as usize;

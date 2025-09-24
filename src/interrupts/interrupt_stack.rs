@@ -9,6 +9,7 @@ use crate::{
 };
 
 type Stack = Page;
+type InterruptStack = Page;
 
 fn alloc_stack() -> Result<NonNull<Stack>> {
     let stack = heap::alloc::<Stack>()?.cast_const();
