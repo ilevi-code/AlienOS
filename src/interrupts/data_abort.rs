@@ -15,6 +15,7 @@ pub(super) extern "C" fn data_abort_handler(reg_set: *mut RegSet) {
         read_fault_register(),
         unsafe { &*reg_set }.lr,
     );
+    crate::semihosting::shutdown(1);
 }
 
 #[cfg(test)]
