@@ -18,7 +18,8 @@ use super::PAGE_SIZE;
 
 const L1_ENTRY_COUNT: usize = 2096;
 
-type L1Table = [Entry; L1_ENTRY_COUNT];
+#[repr(align(8192))]
+struct L1Table([Entry; L1_ENTRY_COUNT]);
 
 pub enum AddressSpace {
     Kernel,
@@ -75,7 +76,7 @@ impl<'a> TranslationTable<'a> {
     }
 
     pub fn get_base(&self) -> usize {
-        self.table.as_ptr() as usize
+        self.table.0.as_ptr() as usize
     }
 
     pub fn map_sections(
@@ -153,38 +154,38 @@ impl<'a> TranslationTable<'a> {
     }
 
     fn get_l1(&mut self, l1_index: usize) -> &mut Entry {
-        &mut self.table[l1_index]
+        &mut self.table.0[l1_index]
     }
 
     /// Makes sure that the second level table at `l1_index` is mapped and accessible.
     fn create_l2table(&mut self, l1_index: usize) -> Result<&mut SeconLevelTable> {
         let new_l2_table = heap::alloc::<SeconLevelTable>()?;
-        let entry = &mut self.table[l1_index];
+        let entry = &mut self.table.0[l1_index];
         match entry.get_type() {
             EntryKind::Unmapped => (),
             _ => return Err(Error::Remap),
         };
         entry.set_l2_table(PhysMut::from_virt(new_l2_table), 0);
         // TODO Ok(phys_to_virt(frame))
-        match self.table[l1_index].get_type_mut() {
+        match self.table.0[l1_index].get_type_mut() {
             EntryKindMut::SeconLevelTable(table) => Ok(unsafe { &mut *table.into_virt() }),
             _ => panic!("Entry isn't second-level-table after creation"),
         }
     }
 
     pub fn apply_kernel(self) {
-        crate::arch::set_ttbr1(self.table.as_ptr() as usize);
+        crate::arch::set_ttbr1(self.table.0.as_ptr() as usize);
     }
 
     pub fn apply_user(&self) {
-        crate::arch::set_ttbr0(Phys::from_virt(self.table.as_ptr()).addr());
+        crate::arch::set_ttbr0(Phys::from_virt(self.table.0.as_ptr()).addr());
     }
 
     fn seek_hole(&self, offset: Offset) -> Result<Offset> {
         let offset = Offset(offset.0.align_down(PAGE_SIZE));
         let mut parts = AddrParts::from(offset);
         loop {
-            let entry = &self.table[parts.l1_index()];
+            let entry = &self.table.0[parts.l1_index()];
             match entry.get_type() {
                 EntryKind::Unmapped => return Ok(Offset(parts.addr())),
                 EntryKind::Section(_) => {
@@ -208,7 +209,7 @@ impl<'a> TranslationTable<'a> {
     fn seek_mapped(&self, offset: Offset, limit: usize) -> Option<Offset> {
         let mut parts = AddrParts::from(offset);
         loop {
-            let entry = &self.table[parts.l1_index()];
+            let entry = &self.table.0[parts.l1_index()];
             match entry.get_type() {
                 EntryKind::Unmapped => parts.try_add(PAGE_SIZE).ok()?,
                 EntryKind::SuperSection | EntryKind::Section(_) => {
@@ -240,7 +241,7 @@ impl<'a> TranslationTable<'a> {
                 return;
             };
             let parts = AddrParts::from(offset);
-            let entry = &mut self.table[parts.l1_index()];
+            let entry = &mut self.table.0[parts.l1_index()];
             match entry.get_type() {
                 EntryKind::Unmapped => (),
                 EntryKind::Section(_) => entry.unmap(),
