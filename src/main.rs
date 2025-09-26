@@ -40,14 +40,11 @@ use memory_model::{get_kernel_location, KERN_LINK};
 use mmu::TranslationTable;
 use spinlock::SpinLock;
 
-use crate::{
-    alloc::Unique,
-    interrupts::{Interrupt, InterruptController},
-};
+use crate::{alloc::Unique, interrupts::InterruptController};
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc, unreachable_code)]
-pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize, stack_top: usize) -> ! {
+pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
     let dtb = phys::PhysMut::<u8>::from(dtb).into_virt();
     let device_tree = DeviceTree::from(dtb);
 
