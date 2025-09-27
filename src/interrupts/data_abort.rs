@@ -46,16 +46,32 @@ mod tests {
         reg_set.lr += 4; // adjust lr to skip the faulting instruction
     }
 
-    fn set_data_abort_handler(handler: extern "C" fn(*mut RegSet)) {
-        unsafe {
-            super::super::interrupt_table::data_abort_handler_pointer =
-                handler as *mut extern "C" fn(*mut RegSet);
+    struct CustomDataAbort {
+        old_handler: *mut extern "C" fn(*mut RegSet),
+    }
+
+    impl CustomDataAbort {
+        fn new(new_handler: extern "C" fn(*mut RegSet)) -> Self {
+            unsafe {
+                let old_handler = super::super::interrupt_table::data_abort_handler_pointer;
+                super::super::interrupt_table::data_abort_handler_pointer =
+                    new_handler as *mut extern "C" fn(*mut RegSet);
+                Self { old_handler }
+            }
+        }
+    }
+
+    impl Drop for CustomDataAbort {
+        fn drop(&mut self) {
+            unsafe {
+                super::super::interrupt_table::data_abort_handler_pointer = self.old_handler;
+            }
         }
     }
 
     #[test_case]
     fn test_data_abort_reported_fault_address() {
-        set_data_abort_handler(dummy_data_abort_handler);
+        let _guard = CustomDataAbort::new(dummy_data_abort_handler);
 
         let addr: usize = 0xaeadbeef;
         let pc: usize;
@@ -77,7 +93,7 @@ mod tests {
 
     #[test_case]
     fn test_data_abort_general_purpose_registers() {
-        set_data_abort_handler(dummy_data_abort_handler);
+        let _guard = CustomDataAbort::new(dummy_data_abort_handler);
 
         let addr: usize = 0xaeadbeef;
 
