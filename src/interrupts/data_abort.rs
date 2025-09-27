@@ -8,12 +8,40 @@ pub(super) fn read_fault_register() -> usize {
     fault_address
 }
 
+extern "C" {
+    static __faults_start: FaultHandlers;
+    static __faults_end: FaultHandlers;
+}
+
+#[repr(C)]
+struct FaultHandlers {
+    addr: usize,
+    handler: usize,
+}
+
+fn search_faults(addr: usize) -> Option<usize> {
+    let start = &raw const __faults_start;
+    let end = &raw const __faults_end;
+    let faults = unsafe { core::slice::from_raw_parts(start, end.offset_from_unsigned(start)) };
+    for fault in faults {
+        if addr == fault.addr {
+            return Some(fault.handler);
+        }
+    }
+    None
+}
+
 #[no_mangle]
 pub(super) extern "C" fn data_abort_handler(reg_set: *mut RegSet) {
+    let reg_set = unsafe { &mut *reg_set };
+    if let Some(handler) = search_faults(reg_set.lr) {
+        reg_set.lr = handler;
+        return;
+    }
     crate::console::println!(
         "fault acessing address 0x{:x} from 0x{:x}",
         read_fault_register(),
-        unsafe { &*reg_set }.lr,
+        reg_set.lr,
     );
     crate::semihosting::shutdown(1);
 }
