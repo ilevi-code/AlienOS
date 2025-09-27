@@ -27,6 +27,7 @@ mod sched;
 mod semihosting;
 mod spinlock;
 mod step_range;
+mod sys;
 mod testing;
 
 use core::slice;

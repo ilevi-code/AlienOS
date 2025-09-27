@@ -13,6 +13,8 @@ pub(crate) enum Error {
     Remap,
     #[error("Address out of range")]
     OutOfRange,
+    #[error("Memory fault")]
+    MemoryFault,
 }
 
 pub(super) type Result<T> = core::result::Result<T, Error>;
