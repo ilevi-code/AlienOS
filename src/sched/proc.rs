@@ -5,12 +5,8 @@ use crate::{
     error::{Error, Result},
     mmu::PAGE_SIZE,
     spinlock::SpinLock,
+    sys::Errno,
 };
-
-enum Errno {
-    Fault,
-    Inval,
-}
 
 pub struct User<T: ?Sized>(T);
 

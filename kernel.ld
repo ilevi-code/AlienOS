@@ -11,9 +11,16 @@ SECTIONS
  .text : { *(.text*) }
  .data : {
     *(.data*)
+
+    . = ALIGN(4);
     __faults_start = .;
     *(faults)
     __faults_end = .;
+
+    . = ALIGN(4);
+    __syscalls_start = .;
+    *(syscalls)
+    __syscalls_end = .;
  }
  .bss : { *(.bss* COMMON) }
  . = ALIGN(0x4000);

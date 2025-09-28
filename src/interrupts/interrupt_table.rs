@@ -59,5 +59,5 @@ extern "C" {
     pub(super) static interrupt_table_start: u32;
     pub(super) static mut data_abort_handler_pointer: *mut extern "C" fn(*mut RegSet);
     pub(super) static mut irq_handler_pointer: *mut extern "C" fn(*mut RegSet);
-    pub(super) static mut svc_handler_pointer: *mut extern "C" fn(*mut RegSet);
+    pub static mut svc_handler_pointer: *mut extern "C" fn(*mut RegSet);
 }

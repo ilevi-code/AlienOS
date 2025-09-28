@@ -26,10 +26,6 @@ impl InterruptController {
             super::interrupt_table::data_abort_handler_pointer =
                 data_abort_handler as *mut extern "C" fn(*mut RegSet);
         }
-        unsafe {
-            super::interrupt_table::svc_handler_pointer =
-                svc_handler as *mut extern "C" fn(*mut RegSet);
-        }
 
         unsafe {
             super::interrupt_table::irq_handler_pointer =
@@ -74,11 +70,6 @@ extern "C" fn irq_handler(reg_set: *mut RegSet) {
         controller.irq_handlers[int_num as usize](int_num, unsafe { &mut *reg_set });
         controller.cpu_interface.signal_end(int_num);
     });
-}
-
-pub(crate) fn svc_handler(reg_set: *mut RegSet) {
-    crate::console::println!("syscall!");
-    crate::semihosting::shutdown(0);
 }
 
 fn default_isr(int_num: u32, reg_set: &mut RegSet) {

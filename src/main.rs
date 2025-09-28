@@ -141,6 +141,7 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
         core::hint::black_box(1);
     }
 
+    sys::init_syscalls().expect("Failed to init syscall table");
     sched::setup_init_proc().expect("Failed to setup init");
     let e = interrupts::call_in_new_stack(run_scheduler);
     panic!("Failed to call scheduler in new stack {:?}", e);
