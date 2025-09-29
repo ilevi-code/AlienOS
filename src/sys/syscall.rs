@@ -13,6 +13,25 @@ pub struct Syscall {
     pub id: usize,
 }
 
+pub enum SyscallNumber {
+    Exec = 0,
+}
+
+#[macro_export]
+macro_rules! syscall {
+    ($name:ident) => {
+        use paste::paste;
+        paste! {
+            #[link_section = "syscalls"]
+            #[used]
+            static [< _SYSCALL_ $name:upper >]: $crate::sys::Syscall = $crate::sys::Syscall {
+                func: $name,
+                id: $crate::sys::SyscallNumber:: [< $name:camel >] as usize
+            };
+        }
+    };
+}
+
 static SYSCALLS: SpinLock<Vec<fn(&mut RegSet)>> = SpinLock::new(Vec::new());
 
 extern "C" {
