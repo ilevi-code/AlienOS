@@ -1,6 +1,6 @@
 use core::{cmp::Ordering, mem::size_of};
 
-pub(super) const ENTRY_MAX_LENGTH: usize = 128;
+pub(super) const ENTRY_MAX_LENGTH: usize = 256;
 
 pub(super) struct PrintBuf<const SIZE: usize> {
     buffer: [u8; SIZE],
