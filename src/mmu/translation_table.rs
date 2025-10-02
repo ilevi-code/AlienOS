@@ -208,7 +208,7 @@ impl<'a> TranslationTable<'a> {
 
     fn seek_mapped(&self, offset: Offset, limit: usize) -> Option<Offset> {
         let mut parts = AddrParts::from(offset);
-        loop {
+        'outer: loop {
             let entry = &self.table.0[parts.l1_index()];
             match entry.get_type() {
                 EntryKind::Unmapped => parts.try_add(PAGE_SIZE).ok()?,
@@ -221,7 +221,7 @@ impl<'a> TranslationTable<'a> {
                         if entry.get_type() == L2EntryType::Unmapped {
                             parts.try_add(PAGE_SIZE).ok()?;
                         } else {
-                            break;
+                            break 'outer;
                         }
                     }
                 }
