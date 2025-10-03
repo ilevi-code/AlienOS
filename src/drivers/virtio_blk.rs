@@ -2,7 +2,9 @@ use core::{arch::asm, mem::offset_of, ptr::NonNull};
 
 use crate::{
     alloc::{Box, Unique},
-    phys::PhysMut,
+    drivers::block::Device,
+    phys::{Phys, PhysMut},
+    spinlock::SpinLock,
 };
 
 #[derive(Debug)]
@@ -163,7 +165,10 @@ const DEVICE_STATUS_DRIVER: u32 = 2;
 const DEVICE_STATUS_DRIVER_OK: u32 = 4;
 const DEVICE_STATUS_FEATURES_OK: u32 = 8;
 pub mod regs {
-    use core::ptr::{addr_of, addr_of_mut};
+    use core::{
+        cell::UnsafeCell,
+        ptr::{addr_of, addr_of_mut},
+    };
     use paste::paste;
 
     #[repr(C)]
@@ -184,10 +189,10 @@ pub mod regs {
         _reserved2: [u32; 2],
         queue_ready: u32,
         _reserved3: [u32; 2],
-        queue_notify: u32,
+        pub queue_notify: UnsafeCell<u32>,
         _reserved4: [u32; 3],
         interrupt_status: u32,
-        interrupt_ack: u32,
+        pub interrupt_ack: UnsafeCell<u32>,
         _reserved5: [u32; 2],
         status: u32,
         _reserved6: [u32; 3],
@@ -228,10 +233,10 @@ pub mod regs {
         volatile_reg_read!(queue_num_max);
         volatile_reg_write!(queue_num);
         volatile_reg!(queue_ready);
-        volatile_reg_write!(queue_notify);
+        // volatile_reg_read!(queue_notify);
 
         volatile_reg_read!(interrupt_status);
-        volatile_reg!(interrupt_ack);
+        // volatile_reg!(interrupt_ack);
 
         volatile_reg_write!(queue_desc_low);
         volatile_reg_write!(queue_desc_high);
@@ -295,7 +300,7 @@ pub mod block {
         pub request_type: u32,
         pub reserved: u32,
         pub sector: u64,
-        pub data: [u8; 512],
+        /* 512 bytes of data */
         pub status: u8,
     }
 }
@@ -317,7 +322,7 @@ pub struct VirtioBlkBuilder {
 
 pub struct VirtioBlk {
     regs: Unique<regs::VirtioRegs>,
-    queue: Box<virt_queue::VirtQueue>,
+    queue: SpinLock<Box<virt_queue::VirtQueue>>,
 }
 
 impl VirtioBlkBuilder {
@@ -395,58 +400,100 @@ impl VirtioBlkBuilder {
 
         Ok(VirtioBlk {
             regs: self.regs,
-            queue,
+            queue: SpinLock::new(queue),
         })
     }
 }
 
 impl VirtioBlk {
-    pub fn write(&mut self, data: Box<block::Request>) {
-        let index = self.queue.alloc_descriptor();
-        let index2 = self.queue.alloc_descriptor();
-
-        let descriptor = self.queue.descriptor_at(index);
-        let ptr = Into::<NonNull<block::Request>>::into(data);
-        let phys = PhysMut::from_virt(ptr.as_ptr()).cast::<u8>();
-        descriptor.addr = phys;
-        descriptor.length = size_of::<block::Request>() as u32 - 1;
-        descriptor.flags = virt_queue::Flag::Next as u16;
-        descriptor.next = index2;
-
-        let descriptor = self.queue.descriptor_at(index2);
-        descriptor.addr = unsafe { phys.byte_add(offset_of!(block::Request, status)) };
-        descriptor.length = size_of::<u8>() as u32;
-        descriptor.flags = virt_queue::Flag::Write as u16;
-        descriptor.next = virt_queue::DesctriptorIndex::LAST;
-
-        // TODO on read, fill split into 3 blocks, and set flags to write
-
-        self.queue.submit(index);
-        data_sync();
-        // always using queue #0
-        self.regs.set_queue_notify(0);
-    }
-
     pub fn status(&self) {
         crate::console::println!("status: {:x}", self.regs.status());
         crate::console::println!("int status: {:x}", self.regs.interrupt_status());
+        self.check_used()
     }
 
-    pub fn interrupt_ack(&mut self) {
-        let int_status = self.regs.interrupt_status();
-        self.regs.set_interrupt_ack(int_status);
-    }
-
-    pub fn check_used(&mut self) {
-        let i = self.queue.used_index();
-        let descriptor = self.queue.descriptor_at(i);
+    pub fn check_used(&self) {
+        let mut queue = self.queue.lock();
+        let i = queue.used_index();
+        let descriptor = queue.descriptor_at(i);
         if descriptor.flags & (virt_queue::Flag::Next as u16) == 0 {
             crate::console::println!("bad descriptor");
         }
         let next = descriptor.next;
-        let descriptor = self.queue.descriptor_at(next);
+        let descriptor = queue.descriptor_at(next);
         let addr = descriptor.addr;
         let addr = addr.into_virt();
-        crate::console::println!("status: {:x}", unsafe { addr.read_volatile() });
+        crate::console::println!("desc status: {:x}", unsafe { addr.read_volatile() });
+    }
+}
+
+impl Device for VirtioBlk {
+    fn read(
+        &self,
+        buf: &mut [u8; super::block::SECTOR_SIZE],
+        sector: usize,
+    ) -> crate::error::Result<()> {
+        todo!()
+    }
+
+    fn write(
+        &self,
+        buf: &[u8; super::block::SECTOR_SIZE],
+        sector: usize,
+    ) -> crate::error::Result<()> {
+        let request = block::Request {
+            request_type: block::VIRTIO_BLK_T_OUT,
+            reserved: 0,
+            sector: sector as u64,
+            status: 0,
+        };
+        let mut queue = self.queue.lock();
+        let index = queue.alloc_descriptor();
+        let index2 = queue.alloc_descriptor();
+        let index3 = queue.alloc_descriptor();
+
+        let phys = Phys::from_virt(&raw const request as *const u8);
+        {
+            let header_start = queue.descriptor_at(index);
+            header_start.addr = phys;
+            header_start.length = size_of::<block::Request>() as u32 - 1;
+            header_start.flags = virt_queue::Flag::Next as u16;
+            header_start.next = index2;
+        }
+
+        {
+            let data_descriptor = queue.descriptor_at(index2);
+            data_descriptor.addr = Phys::from_virt(buf.as_ptr());
+            // let aaa = Phys::from_virt(buf.as_ptr()).addr();
+            // crate::println!("AAAAAAAAAAAA {:?} {:x}", buf.as_ptr(), aaa);
+            data_descriptor.length = 512;
+            data_descriptor.flags = virt_queue::Flag::Next as u16;
+            data_descriptor.next = index3;
+        }
+
+        {
+            let header_status = queue.descriptor_at(index3);
+            header_status.addr = unsafe { phys.byte_add(offset_of!(block::Request, status)) };
+            header_status.length = size_of::<u8>() as u32;
+            header_status.flags = virt_queue::Flag::Write as u16;
+            header_status.next = virt_queue::DesctriptorIndex::LAST;
+        }
+
+        queue.submit(index);
+        drop(queue);
+        data_sync();
+
+        // always using queue #0
+        unsafe { self.regs.queue_notify.get().write_volatile(0) };
+
+        Ok(())
+    }
+
+    fn ack_interrupt(&self) {
+        self.status();
+        let int_status = self.regs.interrupt_status();
+        // SAFETY:
+        // regs are MMIO
+        unsafe { self.regs.interrupt_ack.get().write_volatile(int_status) };
     }
 }

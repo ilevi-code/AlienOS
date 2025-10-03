@@ -39,13 +39,6 @@ impl<T> Box<T> {
         let b = core::mem::ManuallyDrop::new(b);
         b.0
     }
-
-    /// # Safety
-    ///
-    /// The pointer must point to a block of memory allocated by the global allocator.
-    pub(crate) unsafe fn from_non_null(ptr: NonNull<T>) -> Self {
-        Box(ptr)
-    }
 }
 
 impl<T> From<Box<T>> for NonNull<T> {
@@ -63,6 +56,15 @@ impl<T> Box<MaybeUninit<T>> {
         let this = core::mem::ManuallyDrop::new(this);
         Box(this.0.cast::<T>())
         // Not dropping this, since ownership was transferred to the returned Box
+    }
+}
+
+impl<T: ?Sized> Box<T> {
+    /// # Safety
+    ///
+    /// The pointer must point to a block of memory allocated by the global allocator.
+    pub(crate) unsafe fn from_non_null(ptr: NonNull<T>) -> Self {
+        Box(ptr)
     }
 }
 
@@ -106,3 +108,5 @@ where
         f.debug_tuple("Box").field(inner).finish()
     }
 }
+
+impl<T, U: ?Sized> core::ops::CoerceUnsized<Box<U>> for Box<T> where T: core::marker::Unsize<U> {}

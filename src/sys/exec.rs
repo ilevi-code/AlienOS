@@ -1,5 +1,7 @@
 use core::fmt::Debug;
 
+use crate::alloc::{Box, Vec};
+use crate::fs::Inode;
 use crate::{interrupts::RegSet, syscall};
 
 syscall!(exec);
@@ -34,4 +36,12 @@ fn exec(regs: &mut RegSet) {
         Err(e) => println!("{:?}", e),
     };
     crate::semihosting::shutdown(0);
+}
+
+use crate::error::Result;
+
+fn path_to_inode(path: &Path) -> Result<Box<Inode>> {
+    let mut aux_buf = Vec::<u8>::new();
+    aux_buf.resize(1024, 0)?;
+    todo!();
 }

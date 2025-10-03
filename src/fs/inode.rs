@@ -1,0 +1,21 @@
+#[repr(C)]
+pub struct Inode {
+    mode: u16,
+    uid: u16,
+    size: u32,
+    atime: u32,
+    ctime: u32,
+    mtime: u32,
+    dtime: u32,
+    gid: u16,
+    link_count: u16,
+    blocks: u32,
+    flags: u32,
+    osd1: u32,
+    block: [u32; 15],
+    generation: u32,
+    file_acl: u32,
+    dir_acl: u32,
+    faddr: u32,
+    osd2: [u8; 12],
+}

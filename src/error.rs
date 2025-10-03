@@ -15,6 +15,8 @@ pub(crate) enum Error {
     OutOfRange,
     #[error("Memory fault")]
     MemoryFault,
+    #[error("Unsupported")]
+    Unsupproted,
 }
 
 pub(super) type Result<T> = core::result::Result<T, Error>;

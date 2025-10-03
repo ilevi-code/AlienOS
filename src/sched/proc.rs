@@ -54,6 +54,7 @@ pub struct Process {
     pub sp: *mut u8,
     #[allow(unused)]
     pub fd: FdTable,
+    pub chan: AtomicUsize,
     pub state: AtomicState,
 }
 
@@ -104,6 +105,7 @@ impl Process {
             kern_stack: Box::<KernelStack>::zeroed()?,
             sp: null_mut(),
             fd: SpinLock::new(Vec::new()),
+            chan: AtomicUsize::new(0),
             state: AtomicState::new(State::Runnable),
         })
     }

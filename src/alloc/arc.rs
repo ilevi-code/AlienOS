@@ -6,12 +6,12 @@ use core::sync::atomic::{self, AtomicUsize, Ordering};
 use crate::alloc::Box;
 use crate::error::Result;
 
-pub struct Arc<T> {
+pub struct Arc<T: ?Sized> {
     ptr: NonNull<ArcInner<T>>,
     phantom: PhantomData<ArcInner<T>>,
 }
 
-pub struct ArcInner<T> {
+pub struct ArcInner<T: ?Sized> {
     rc: AtomicUsize,
     data: T,
 }
@@ -31,10 +31,17 @@ impl<T> Arc<T> {
     }
 }
 
+impl<T: ?Sized> Arc<T> {
+    pub fn as_ptr(this: &Self) -> *const T {
+        let inner = unsafe { this.ptr.as_ref() };
+        &raw const inner.data
+    }
+}
+
 unsafe impl<T: Sync + Send> Send for Arc<T> {}
 unsafe impl<T: Sync + Send> Sync for Arc<T> {}
 
-impl<T> Deref for Arc<T> {
+impl<T: ?Sized> Deref for Arc<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -43,7 +50,7 @@ impl<T> Deref for Arc<T> {
     }
 }
 
-impl<T> Clone for Arc<T> {
+impl<T: ?Sized> Clone for Arc<T> {
     fn clone(&self) -> Arc<T> {
         let inner = unsafe { self.ptr.as_ref() };
         // Using a relaxed ordering is alright here as we don't need any atomic
@@ -62,7 +69,7 @@ impl<T> Clone for Arc<T> {
     }
 }
 
-impl<T> Drop for Arc<T> {
+impl<T: ?Sized> Drop for Arc<T> {
     fn drop(&mut self) {
         let inner = unsafe { self.ptr.as_ref() };
         if inner.rc.fetch_sub(1, Ordering::Release) != 1 {
@@ -77,4 +84,9 @@ impl<T> Drop for Arc<T> {
             Box::from_non_null(self.ptr);
         }
     }
+}
+
+impl<T: ?Sized, U: ?Sized> core::ops::CoerceUnsized<Arc<U>> for Arc<T> where
+    T: core::marker::Unsize<U>
+{
 }
