@@ -1,4 +1,4 @@
-use core::fmt::{self};
+use core::fmt::{self, Write};
 
 use crate::{
     console::{
@@ -31,9 +31,12 @@ fn console_flush_entris(serial: &mut Pl011Regs) {
     }
 }
 
-pub fn write_args(args: fmt::Arguments) -> Result<(), fmt::Error> {
+pub fn write_args(args: fmt::Arguments, newline: bool) -> Result<(), fmt::Error> {
     let mut buf = FmtBuffer::new();
     fmt::write(&mut buf, args)?;
+    if newline {
+        buf.write_str("\n")?;
+    }
     crate::interrupts::without_irq(|| {
         PRINT_BUF.lock().push(buf.as_bytes());
     });
@@ -54,7 +57,7 @@ macro_rules! println {
         $crate::console::print!("\n")
     };
     ($($arg:tt)*) => {{
-        $crate::console::write_args(format_args_nl!($($arg)*)).unwrap();
+        $crate::console::write_args(format_args!($($arg)*), true).unwrap();
     }};
 }
 
@@ -62,7 +65,7 @@ macro_rules! println {
 macro_rules! print {
     () => {};
     ($($arg:tt)*) => {{
-        $crate::console::write_args(format_args!($($arg)*)).unwrap();
+        $crate::console::write_args(format_args!($($arg)*), false).unwrap();
     }};
 }
 

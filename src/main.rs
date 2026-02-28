@@ -3,7 +3,8 @@
     pointer_is_aligned_to,
     negative_impls,
     custom_test_frameworks,
-    format_args_nl
+    coerce_unsized,
+    unsize
 )]
 #![test_runner(crate::testing::test_runner)]
 #![no_std]
