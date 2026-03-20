@@ -33,6 +33,8 @@ struct LogicalExtraction {
     suffix: Option<BlockSize>,
 }
 
+#[derive(PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
 pub(super) struct ExtractionReult {
     pub(super) extracted: NonNull<Block>,
     pub(super) new_next: Option<NonNull<Block>>,
@@ -323,6 +325,107 @@ mod tests {
                 }
             ),
             None,
+        );
+    }
+
+    #[repr(align(1024))]
+    #[allow(unused)]
+    struct AlignedBuffer([u8; 1024]);
+
+    impl AlignedBuffer {
+        fn create_mock_block(
+            &mut self,
+            size: usize,
+            next: usize,
+            aligned_to: usize,
+            // unaligned_to: Option<usize>,
+        ) -> NonNull<Block> {
+            let start = NonNull::from_mut(self).cast::<u8>();
+            let mut block_ptr = unsafe { start.add(aligned_to) }.cast::<Block>();
+            let block = unsafe { block_ptr.as_mut() };
+            block.size = BlockSize::from(size).unwrap();
+            block.next = NonNull::new(next as *mut Block);
+            block_ptr
+        }
+    }
+
+    #[test_case]
+    fn extract_exact_match() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let block = buf.create_mock_block(16, 0x2000, 8);
+        assert_eq!(
+            unsafe {
+                Block::extract_block(
+                    block,
+                    BlockLayout::from(Layout::from_size_align(16, 8).unwrap()),
+                )
+            },
+            Some(ExtractionReult {
+                extracted: block,
+                new_next: NonNull::<Block>::new(0x2000 as *mut Block)
+            })
+        );
+    }
+
+    #[test_case]
+    fn extract_with_only_suffix() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let block = buf.create_mock_block(32, 0x2000, 8);
+        assert_eq!(
+            unsafe {
+                Block::extract_block(
+                    block,
+                    BlockLayout::from(Layout::from_size_align(16, 8).unwrap()),
+                )
+            },
+            Some(ExtractionReult {
+                extracted: block,
+                new_next: Some(unsafe { block.byte_offset(16) }),
+            })
+        );
+    }
+
+    #[test_case]
+    fn extract_with_only_prefix() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let block = buf.create_mock_block(24, 0x2000, 8);
+        assert_eq!(
+            unsafe {
+                Block::extract_block(
+                    block,
+                    BlockLayout::from(Layout::from_size_align(16, 16).unwrap()),
+                )
+            },
+            Some(ExtractionReult {
+                extracted: unsafe { block.byte_offset(8) },
+                new_next: Some(block),
+            })
+        );
+        assert_eq!(
+            unsafe { block.as_ref() }.next,
+            NonNull::new(0x2000 as *mut Block)
+        );
+    }
+
+    #[test_case]
+    fn extract_with_prefix_and_suffix() {
+        let mut buf = AlignedBuffer([0; 1024]);
+        let block = buf.create_mock_block(64, 0x2000, 8);
+        assert_eq!(
+            unsafe {
+                Block::extract_block(
+                    block,
+                    BlockLayout::from(Layout::from_size_align(32, 16).unwrap()),
+                )
+            },
+            Some(ExtractionReult {
+                extracted: unsafe { block.byte_offset(8) },
+                new_next: Some(block),
+            })
+        );
+        assert_eq!(
+            unsafe { block.as_ref() }.next,
+            Some(unsafe { block.byte_offset(40) })
         );
     }
 }
