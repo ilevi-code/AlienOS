@@ -9,7 +9,7 @@ use crate::{
 
 #[repr(C)]
 pub struct Syscall {
-    pub func: fn(&mut RegSet),
+    pub func: extern "Rust" fn(&mut RegSet),
     pub id: usize,
 }
 
@@ -34,7 +34,7 @@ macro_rules! syscall {
 
 static SYSCALLS: SpinLock<Vec<fn(&mut RegSet)>> = SpinLock::new(Vec::new());
 
-extern "C" {
+extern "Rust" {
     static __syscalls_start: Syscall;
     static __syscalls_end: Syscall;
 }
