@@ -26,9 +26,16 @@ pub(super) struct Block {
     pub(super) size: BlockSize,
 }
 
-struct AlignmentReduction {
-    total: BlockSize,
-    excess: Option<BlockSize>,
+#[derive(PartialEq, Eq)]
+#[cfg_attr(test, derive(Debug))]
+struct LogicalExtraction {
+    prefix: Option<BlockSize>,
+    suffix: Option<BlockSize>,
+}
+
+pub(super) struct ExtractionReult {
+    pub(super) extracted: NonNull<Block>,
+    pub(super) new_next: Option<NonNull<Block>>,
 }
 
 const_assert!(size_of::<Block>() == 8);
@@ -50,18 +57,16 @@ impl Block {
         ptr
     }
 
-    pub(super) fn check_fit(&self, layout: BlockLayout) -> SizeFit {
-        let offset =
-            ((self as *const Block) as *const u8).align_offset(layout.align().byte_count());
-        let size_after_align = match self.size.byte_count().checked_sub(offset) {
-            Some(size) => size,
-            None => return SizeFit::Misfit,
-        };
-        match size_after_align.cmp(&layout.size().byte_count()) {
-            Ordering::Less => SizeFit::Misfit,
-            Ordering::Equal if offset == 0 => SizeFit::Exact,
-            _ => SizeFit::Excess,
-        }
+    fn logical_extract(
+        block: NonNull<Block>,
+        block_size: BlockSize,
+        layout: BlockLayout,
+    ) -> Option<LogicalExtraction> {
+        let offset = block.cast::<u8>().align_offset(layout.align().byte_count());
+        let size_after_align = block_size.byte_count().checked_sub(offset)?;
+        let prefix = BlockSize::from(block_size.byte_count() - size_after_align);
+        let suffix = BlockSize::from(size_after_align.checked_sub(layout.size.byte_count())?);
+        Some(LogicalExtraction { prefix, suffix })
     }
 
     pub(super) fn end_ptr(&mut self) -> NonNull<Block> {
@@ -75,73 +80,83 @@ impl Block {
         self.next = next.next;
     }
 
-    pub(super) fn take_next(&mut self, other: &mut Self) {
-        self.next = other.next.take()
-    }
-
-    fn calc_reduction_for_layout(
-        ptr: *const u8,
-        size: BlockSize,
-        align: BlockSize,
-    ) -> AlignmentReduction {
-        let aligned_size = BlockSize::from(size.byte_count().align_up(align.byte_count())).unwrap();
-        let reduce_for_alignment = match BlockSize::from(ptr.align_offset(align.byte_count()))
-            .and_then(|offset| align - offset)
-        {
-            None => {
-                return AlignmentReduction {
-                    total: aligned_size,
-                    excess: aligned_size - size,
-                }
-            }
-            Some(r) => r,
-        };
-        match reduce_for_alignment.cmp(&size) {
-            Ordering::Less => {
-                let total = if size <= align {
-                    // If align is bigger (or equal) - total size is guaranteed to be enough, and
-                    // alignment is enforced.
-                    align + reduce_for_alignment
-                } else {
-                    aligned_size + reduce_for_alignment
-                };
-                AlignmentReduction {
-                    total,
-                    excess: total - size,
-                }
-            }
-            Ordering::Equal => AlignmentReduction {
-                total: reduce_for_alignment,
-                excess: None,
-            },
-            Ordering::Greater => AlignmentReduction {
-                total: reduce_for_alignment,
-                excess: reduce_for_alignment - size,
-            },
-        }
-    }
-
     /// Extract a sub-block of `size` from the end of `block`.
-    pub(super) fn extract_block(
-        block: *mut Block,
+    ///
+    /// # Safety:
+    /// `block` must be convertiable to reference
+    pub(super) unsafe fn extract_block(
+        mut block: NonNull<Block>,
         layout: BlockLayout,
-    ) -> Option<(*mut u8, Option<NonNull<Block>>)> {
-        unsafe {
-            let end_of_block = block.add((*block).size.block_count());
-            let AlignmentReduction { total, excess } =
-                Self::calc_reduction_for_layout(block as *mut u8, layout.size(), layout.align());
-            if total > (*block).size {
-                return None;
-            }
-            let allocated = end_of_block.sub(total.block_count());
-            (*block).size = ((*block).size - total).unwrap();
-            let excess = excess.and_then(|excess_size| {
-                let mut excess = NonNull::new(end_of_block.sub(excess_size.block_count()))?;
-                excess.as_mut().size = excess_size;
-                Some(excess)
-            });
-            Some((allocated as *mut u8, excess))
+    ) -> Option<ExtractionReult> {
+        let LogicalExtraction { prefix, suffix };
+        let Block { next, size };
+
+        {
+            // Safety:
+            // The caller unsures `block` is convertiable to reference
+            let block = unsafe { block.as_ref() };
+            Block { next, size } = *block;
         }
+        LogicalExtraction { prefix, suffix } = Block::logical_extract(block, size, layout)?;
+
+        let result = match (prefix, suffix) {
+            (None, None) => ExtractionReult {
+                extracted: block,
+                new_next: next,
+            },
+            (Some(prefix_size), None) => {
+                // Safety:
+                // The logical_extract unsures that `block + prefix` is within the current block
+                let extracted = unsafe { block.add(prefix_size.block_count()) };
+                // Safety:
+                // The caller unsures `block` is convertiable to reference
+                let this = unsafe { block.as_mut() };
+                this.size = (this.size - layout.size()).unwrap();
+                ExtractionReult {
+                    extracted,
+                    new_next: Some(block),
+                }
+            }
+            (None, Some(suffix_size)) => {
+                // Safety:
+                // The logical_extract vlidates that layout.size() is smaller then the block size.
+                let mut remaining_ptr = unsafe { block.byte_add(layout.size().byte_count()) };
+                // Safety:
+                // `remaining_ptr` is inside the allocatoin which is `block`, and the caller unsures
+                // `block` is convertiable to reference.
+                let remaining = unsafe { remaining_ptr.as_mut() };
+                remaining.size = suffix_size;
+                remaining.next = next;
+                ExtractionReult {
+                    extracted: block,
+                    new_next: Some(remaining_ptr),
+                }
+            }
+            (Some(prefix_size), Some(suffix_size)) => {
+                // Safety:
+                // The logical_extract unsures that `block + prefix` is within the current block
+                let extracted = unsafe { block.add(prefix_size.block_count()) };
+                // Safety:
+                // The logical_extract unsures that `block + prefix + layout.size` is within the current block
+                let mut suffix_ptr = unsafe { extracted.add(layout.size().block_count()) };
+                // Safety:
+                // `suffix_ptr` is inside the allocatoin which is `block`, and the caller unsures
+                // `block` is convertiable to reference.
+                let suffix = unsafe { suffix_ptr.as_mut() };
+                suffix.size = suffix_size;
+                suffix.next = next;
+                // Safety:
+                // The caller unsures `block` is convertiable to reference
+                let prefix = unsafe { block.as_mut() };
+                prefix.size = prefix_size;
+                prefix.next = Some(suffix_ptr);
+                ExtractionReult {
+                    extracted,
+                    new_next: Some(block),
+                }
+            }
+        };
+        Some(result)
     }
 
     pub(super) fn size(&self) -> BlockSize {
@@ -210,79 +225,104 @@ mod tests {
     use super::*;
 
     #[test_case]
-    fn test_reduction_aligned_without_excess() {
-        let reduction = Block::calc_reduction_for_layout(
-            0x1000 as *const u8,
-            BlockSize::from(8).unwrap(),
-            BlockSize::from(8).unwrap(),
+    fn extraction_without_suffix_and_prefix() {
+        assert_eq!(
+            Block::logical_extract(
+                NonNull::new(0x1000 as *mut Block).unwrap(),
+                BlockSize::from(16).unwrap(),
+                BlockLayout {
+                    size: BlockSize::from(16).unwrap(),
+                    align: BlockSize::from(16).unwrap(),
+                }
+            ),
+            Some(LogicalExtraction {
+                prefix: None,
+                suffix: None
+            })
         );
-        assert_eq!(reduction.total.byte_count(), 8);
-        assert_eq!(reduction.excess, None);
     }
 
     #[test_case]
-    fn test_reduction_unaligned_without_excess() {
-        let reduction = Block::calc_reduction_for_layout(
-            0x1008 as *const u8,
-            BlockSize::from(8).unwrap(),
-            BlockSize::from(16).unwrap(),
+    fn extraction_only_prefix() {
+        assert_eq!(
+            Block::logical_extract(
+                NonNull::new(0x1008 as *mut Block).unwrap(),
+                BlockSize::from(24).unwrap(),
+                BlockLayout {
+                    size: BlockSize::from(16).unwrap(),
+                    align: BlockSize::from(16).unwrap(),
+                }
+            ),
+            Some(LogicalExtraction {
+                prefix: Some(BlockSize::from(8).unwrap()),
+                suffix: None
+            })
         );
-        assert_eq!(reduction.total.byte_count(), 8);
-        assert_eq!(reduction.excess, None);
     }
 
     #[test_case]
-    fn test_reduction_unaligned_without_excess2() {
-        let reduction = Block::calc_reduction_for_layout(
-            0x1008 as *const u8,
-            BlockSize::from(16).unwrap(),
-            BlockSize::from(8).unwrap(),
+    fn extraction_only_suffix() {
+        assert_eq!(
+            Block::logical_extract(
+                NonNull::new(0x1000 as *mut Block).unwrap(),
+                BlockSize::from(24).unwrap(),
+                BlockLayout {
+                    size: BlockSize::from(16).unwrap(),
+                    align: BlockSize::from(16).unwrap(),
+                }
+            ),
+            Some(LogicalExtraction {
+                prefix: None,
+                suffix: Some(BlockSize::from(8).unwrap()),
+            })
         );
-        assert_eq!(reduction.total.byte_count(), 16);
-        assert_eq!(reduction.excess, None);
     }
 
     #[test_case]
-    fn test_reduction_aligned_with_excess() {
-        let reduction = Block::calc_reduction_for_layout(
-            0x1008 as *const u8,
-            BlockSize::from(16).unwrap(),
-            BlockSize::from(32).unwrap(),
+    fn extraction_with_prefix_and_suffix() {
+        assert_eq!(
+            Block::logical_extract(
+                NonNull::new(0x1008 as *mut Block).unwrap(),
+                BlockSize::from(40).unwrap(),
+                BlockLayout {
+                    size: BlockSize::from(16).unwrap(),
+                    align: BlockSize::from(16).unwrap(),
+                }
+            ),
+            Some(LogicalExtraction {
+                prefix: Some(BlockSize::from(8).unwrap()),
+                suffix: Some(BlockSize::from(16).unwrap())
+            })
         );
-        assert_eq!(reduction.total.byte_count(), 40);
-        assert_eq!(reduction.excess.unwrap().byte_count(), 24);
     }
 
     #[test_case]
-    fn test_reduction_unaligned_with_excess() {
-        let reduction = Block::calc_reduction_for_layout(
-            0x1008 as *const u8,
-            BlockSize::from(32).unwrap(),
-            BlockSize::from(16).unwrap(),
+    fn cant_extract_bigger_block() {
+        assert_eq!(
+            Block::logical_extract(
+                NonNull::new(0x1000 as *mut Block).unwrap(),
+                BlockSize::from(32).unwrap(),
+                BlockLayout {
+                    size: BlockSize::from(64).unwrap(),
+                    align: BlockSize::from(8).unwrap(),
+                }
+            ),
+            None,
         );
-        assert_eq!(reduction.total.byte_count(), 40);
-        assert_eq!(reduction.excess.unwrap().byte_count(), 8);
     }
 
     #[test_case]
-    fn test_reduction_unaligned_with_excess() {
-        let reduction = Block::calc_reduction_for_layout(
-            0x1008 as *const u8,
-            BlockSize::from(32).unwrap(),
-            BlockSize::from(16).unwrap(),
+    fn cant_extract_block_after_alignement() {
+        assert_eq!(
+            Block::logical_extract(
+                NonNull::new(0x1008 as *mut Block).unwrap(),
+                BlockSize::from(32).unwrap(),
+                BlockLayout {
+                    size: BlockSize::from(32).unwrap(),
+                    align: BlockSize::from(16).unwrap(),
+                }
+            ),
+            None,
         );
-        assert_eq!(reduction.total.byte_count(), 40);
-        assert_eq!(reduction.excess.unwrap().byte_count(), 8);
-    }
-
-    #[test_case]
-    fn test_reduction_unaligned_with_excess() {
-        let reduction = Block::calc_reduction_for_layout(
-            0x1008 as *const u8,
-            BlockSize::from(32).unwrap(),
-            BlockSize::from(16).unwrap(),
-        );
-        assert_eq!(reduction.total.byte_count(), 40);
-        assert_eq!(reduction.excess.unwrap().byte_count(), 8);
     }
 }

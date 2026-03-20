@@ -19,41 +19,34 @@ impl KernAlloctor {
         }
     }
     pub(super) fn alloc(&mut self, layout: Layout) -> Result<*mut u8> {
+        let s = layout.size();
         let layout = BlockLayout::from(layout);
         let ptr = match self.look_for_freed_block(layout) {
             Some(block) => block,
             None => self.do_alloc(layout)?,
         };
+        // crate::println!("+++++++++ alloc returned {:?} (size={:x})", ptr, s);
         Ok(ptr)
     }
 
-    /// Looks for a block that is at big enough.
+    /// Looks for a block that is at big enough
     /// If the block found is exactly the wanted size, it is popped from the free list.
     fn look_for_freed_block(&mut self, layout: BlockLayout) -> Option<*mut u8> {
         let mut iter = self.free_list;
         let mut prev: Option<&mut Block> = None;
         while let Some(mut current_ptr) = iter {
-            match unsafe { current_ptr.as_mut() }.check_fit(layout) {
-                SizeFit::Misfit => (),
-                SizeFit::Excess => {
-                    let (allocated, excess) =
-                        Block::extract_block(current_ptr.as_ptr(), layout).unwrap();
-                    if let Some(excess) = excess {
-                        self.free(excess);
-                    }
-                    return Some(allocated);
-                }
-                SizeFit::Exact => {
-                    if let Some(prev) = prev {
-                        prev.take_next(unsafe { current_ptr.as_mut() });
-                    } else {
-                        self.free_list = unsafe { current_ptr.as_mut() }.next;
-                    }
-                    return Some(current_ptr.as_ptr() as *mut u8);
-                }
-            }
-            iter = unsafe { current_ptr.as_mut() }.next;
-            prev = Some(unsafe { current_ptr.as_mut() });
+            // Safety:
+            // Block in owned by the heap and thus convertible to a reference
+            let Some(extraction) = (unsafe { Block::extract_block(current_ptr, layout) }) else {
+                iter = unsafe { current_ptr.as_mut() }.next;
+                prev = Some(unsafe { current_ptr.as_mut() });
+                continue;
+            };
+            match prev {
+                Some(prev) => prev.next = extraction.new_next,
+                None => self.free_list = extraction.new_next,
+            };
+            return Some(extraction.extracted.cast::<u8>().as_ptr());
         }
         None
     }
