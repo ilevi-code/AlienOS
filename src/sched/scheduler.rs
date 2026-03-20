@@ -19,6 +19,7 @@ static NEXT_PID: AtomicU32 = AtomicU32::new(1);
 
 global_asm!(
     ".section \".text\", \"ax\"",
+    ".type init_code, \"function\"",
     ".global init_code",
     "init_code:",
     // Push "/sbin/init" to stack
@@ -86,7 +87,7 @@ pub fn setup_init_proc() -> Result<()> {
     rfe_stack.pc = mapped_code.as_ptr().addr();
     let switch_frame = stack.alloc_frame::<SwitchFrame>()?;
     switch_frame.regs = [0; 12];
-    switch_frame.pc = crate::sched::proc::return_to_user_mode as usize;
+    switch_frame.pc = return_to_user_mode as *const () as usize;
     switch_frame.cspr = arch::get_cpsr();
 
     init.sp = stack.into_sp();
@@ -143,6 +144,7 @@ fn find_runnable_proc() -> Arc<Process> {
 
 extern "C" {
     fn stack_switch_unchecked(other_stack: *mut u8);
+    fn return_to_user_mode(other_stack: *mut u8);
 }
 
 global_asm!(
@@ -154,5 +156,14 @@ global_asm!(
     "push {{r1}}",
     "mov sp, r0",
     "pop {{r1-r12}}",
+    "rfe sp!",
+);
+
+global_asm!(
+    ".section \".text\", \"ax\"",
+    ".global return_to_user_mode",
+    "return_to_user_mode:",
+    "ldm sp, {{sp}}^",
+    "add sp, sp, 4",
     "rfe sp!",
 );

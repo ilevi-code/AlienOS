@@ -110,16 +110,3 @@ impl Process {
         })
     }
 }
-
-extern "C" {
-    pub fn return_to_user_mode(other_stack: *mut u8);
-}
-
-global_asm!(
-    ".section \".text\", \"ax\"",
-    ".global return_to_user_mode",
-    "return_to_user_mode:",
-    "ldm sp, {{sp}}^",
-    "add sp, sp, 4",
-    "rfe sp!",
-);
