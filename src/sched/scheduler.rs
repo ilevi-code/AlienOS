@@ -108,16 +108,14 @@ pub fn sched() -> ! {
 
 pub fn wakeup(chan: usize) {
     let guard = PROCCESSES.lock();
-    loop {
-        for i in 0..guard.len() {
-            if guard[i].chan.load(Ordering::Acquire) == chan {
-                let _ = guard[i].state.compare_exchange(
-                    State::Sleeping,
-                    State::Runnable,
-                    Ordering::Acquire,
-                    Ordering::Relaxed,
-                );
-            }
+    for i in 0..guard.len() {
+        if guard[i].chan.load(Ordering::Acquire) == chan {
+            let _ = guard[i].state.compare_exchange(
+                State::Sleeping,
+                State::Runnable,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            );
         }
     }
 }
