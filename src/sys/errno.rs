@@ -24,3 +24,5 @@ impl From<crate::error::Error> for Errno {
         }
     }
 }
+
+pub type SyscallResult = core::result::Result<usize, Errno>;

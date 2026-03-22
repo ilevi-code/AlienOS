@@ -4,12 +4,14 @@ use crate::{
     interrupts::{self, RegSet},
     println,
     spinlock::SpinLock,
-    sys::Errno,
+    sys::{Errno, SyscallResult},
 };
+
+type SyscallFn = extern "Rust" fn(&mut RegSet) -> SyscallResult;
 
 #[repr(C)]
 pub struct Syscall {
-    pub func: extern "Rust" fn(&mut RegSet),
+    pub func: SyscallFn,
     pub id: usize,
 }
 
@@ -33,19 +35,19 @@ macro_rules! syscall {
     };
 }
 
-static SYSCALLS: SpinLock<Vec<fn(&mut RegSet)>> = SpinLock::new(Vec::new());
+static SYSCALLS: SpinLock<Vec<SyscallFn>> = SpinLock::new(Vec::new());
 
 extern "Rust" {
     static __syscalls_start: Syscall;
     static __syscalls_end: Syscall;
 }
 
-fn no_sys(regs: &mut RegSet) {
-    regs.r[0] = Errno::NoSyscall as usize
+fn no_sys(_regs: &mut RegSet) -> SyscallResult {
+    Err(Errno::NoSyscall)
 }
 
 pub fn init_syscalls() -> Result<()> {
-    let mut syscalls = Vec::<fn(&mut RegSet)>::new();
+    let mut syscalls = Vec::<SyscallFn>::new();
     let start = &raw const __syscalls_start;
     let end = &raw const __syscalls_end;
     let unordered_syscalls =
@@ -77,6 +79,9 @@ fn svc_handler(regs: *mut RegSet) {
             guard[regs.r[0]]
         }
     };
-    syscall(regs);
+    regs.r[0] = match syscall(regs) {
+        Ok(return_value) => return_value,
+        Err(error) => error as usize,
+    };
     regs.lr += 4;
 }

@@ -1,30 +1,22 @@
-use crate::alloc::{Box, Vec};
-use crate::fs::{Inode, Path};
-use crate::sched::with_current;
-use crate::{interrupts::RegSet, syscall};
+use crate::{
+    alloc::Arc,
+    fs::Path,
+    println,
+    sched::with_current,
+    sys::SyscallResult,
+    {interrupts::RegSet, syscall},
+};
 
 syscall!(exec);
 
-fn exec(regs: &mut RegSet) {
+fn exec(regs: &mut RegSet) -> SyscallResult {
     let mut dest = [0_u8; 10];
-    let res = crate::sys::copy_from_user(&mut dest, unsafe {
+    crate::sys::copy_from_user(&mut dest, unsafe {
         core::slice::from_raw_parts(regs.r[1] as *const u8, 10)
-    });
-    use crate::println;
-    match res {
-        Ok(_) => {
-            let path = Path::new(&dest);
-            println!("exec: {path:?}");
-        }
-        Err(e) => println!("{:?}", e),
-    };
-    crate::semihosting::shutdown(0);
-}
-
-use crate::error::Result;
-
-fn path_to_inode(path: &Path) -> Result<Box<Inode>> {
-    let mut aux_buf = Vec::<u8>::new();
-    aux_buf.resize(1024, 0)?;
-    todo!();
+    })?;
+    let path = Path::new(&dest);
+    println!("exec: {path:?}");
+    let fs = with_current(|current| Arc::clone(&current.fs)).unwrap();
+    let _ = fs.path_to_inode(path);
+    todo!()
 }
