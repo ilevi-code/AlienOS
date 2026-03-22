@@ -16,16 +16,14 @@ pub fn register_disk(disk: Arc<dyn Device>, interrupt: Interrupt) -> Result<()> 
     };
     without_irq(|| -> Result<()> {
         let mut guard = DISKS.lock();
-        guard.push((interrupt_num, disk))
-    })?;
-    interrupts::without_irq(|| {
+        guard.push((interrupt_num, disk))?;
         interrupts::CONTROLLER
             .lock()
             .as_mut()
             .unwrap()
             .register(interrupt, disk_isr);
-    });
-    Ok(())
+        Ok(())
+    })
 }
 
 fn disk_isr(int_num: u32, _reg_set: &mut RegSet) {
