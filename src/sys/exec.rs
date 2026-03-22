@@ -1,26 +1,9 @@
-use core::fmt::Debug;
-
 use crate::alloc::{Box, Vec};
-use crate::fs::Inode;
+use crate::fs::{Inode, Path};
+use crate::sched::with_current;
 use crate::{interrupts::RegSet, syscall};
 
 syscall!(exec);
-
-struct Path {
-    bytes: [u8],
-}
-
-impl Path {
-    fn new(bytes: &[u8]) -> &Self {
-        unsafe { &*(bytes as *const [u8] as *const Path) }
-    }
-}
-
-impl Debug for Path {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(unsafe { str::from_utf8_unchecked(&self.bytes) })
-    }
-}
 
 fn exec(regs: &mut RegSet) {
     let mut dest = [0_u8; 10];
