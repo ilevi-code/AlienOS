@@ -12,6 +12,10 @@ impl<T> PerCpu<T> {
     pub fn borrow_mut(&self) -> RefMut<'_, T> {
         self.0.borrow_mut()
     }
+
+    pub fn as_ptr(&self) -> *mut T {
+        self.0.as_ptr()
+    }
 }
 
 #[macro_export]

@@ -1,5 +1,6 @@
 use core::{
     arch::global_asm,
+    ptr::{addr_of_mut, null_mut, NonNull},
     sync::atomic::{AtomicU32, Ordering},
 };
 
@@ -9,6 +10,7 @@ use crate::{
     error::Result,
     heap,
     mmu::{AddressSpace, Page, PagePerm, TranslationTable},
+    per_cpu,
     phys::Phys,
     sched::proc::{PageTable, Process, StackPointer, State},
     spinlock::SpinLock,
@@ -16,6 +18,8 @@ use crate::{
 
 static PROCCESSES: SpinLock<Vec<Arc<Process>>> = SpinLock::new(Vec::new());
 static NEXT_PID: AtomicU32 = AtomicU32::new(1);
+
+per_cpu!(SCHED_STACK: *mut u8 = null_mut());
 
 global_asm!(
     ".section \".text\", \"ax\"",
@@ -64,7 +68,7 @@ struct ReturnFromExceptionStack {
 
 #[repr(C)]
 struct SwitchFrame {
-    regs: [usize; 12],
+    regs: [usize; 11],
     pc: usize,
     cspr: usize,
 }
@@ -88,7 +92,7 @@ pub fn setup_init_proc() -> Result<()> {
     rfe_stack.sp = mapped_stack.as_ptr().addr() + size_of::<Page>();
     rfe_stack.pc = mapped_code.as_ptr().addr();
     let switch_frame = stack.alloc_frame::<SwitchFrame>()?;
-    switch_frame.regs = [0; 12];
+    switch_frame.regs = [0; 11];
     switch_frame.pc = return_to_user_mode as *const () as usize;
     switch_frame.cspr = arch::get_cpsr();
 
@@ -102,8 +106,9 @@ pub fn setup_init_proc() -> Result<()> {
 pub fn sched() -> ! {
     loop {
         let proc = find_runnable_proc();
+        let sched_stack = SCHED_STACK.as_ptr();
         unsafe {
-            stack_switch_unchecked(proc.sp);
+            stack_switch_unchecked(sched_stack, proc.sp);
         }
     }
 }
@@ -143,7 +148,7 @@ fn find_runnable_proc() -> Arc<Process> {
 }
 
 extern "C" {
-    fn stack_switch_unchecked(other_stack: *mut u8);
+    fn stack_switch_unchecked(old_stack: *mut *mut u8, other_stack: *mut u8);
     fn return_to_user_mode(other_stack: *mut u8);
 }
 
@@ -151,11 +156,16 @@ global_asm!(
     ".section \".text\", \"ax\"",
     ".global stack_switch_unchecked",
     "stack_switch_unchecked:",
-    "push {{r1-r12, lr}}",
-    "MRS r1, cpsr",
-    "push {{r1}}",
-    "mov sp, r0",
-    "pop {{r1-r12}}",
+    "sub sp, #4",
+    "push {{lr}}",
+    "push {{r2-r12}}",
+    "add sp, #52",
+    "MRS r2, cpsr",
+    "push {{r2}}",
+    "sub sp, #48",
+    "str sp, [r0]",
+    "mov sp, r1",
+    "pop {{r2-r12}}",
     "rfe sp!",
 );
 
