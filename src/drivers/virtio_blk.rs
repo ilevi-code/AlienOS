@@ -436,7 +436,56 @@ impl Device for VirtioBlk {
         buf: &mut [u8; super::block::SECTOR_SIZE],
         sector: usize,
     ) -> crate::error::Result<()> {
-        todo!()
+        let request = block::Request {
+            request_type: block::VIRTIO_BLK_T_IN,
+            reserved: 0,
+            sector: sector as u64,
+            status: 0,
+        };
+
+        let mut queue = self.queue.lock();
+        let index = queue.alloc_descriptor();
+        let index2 = queue.alloc_descriptor();
+        let index3 = queue.alloc_descriptor();
+
+        let phys = Phys::from_virt(&raw const request as *const u8);
+        {
+            let header_start = queue.descriptor_at(index);
+            header_start.addr = phys;
+            header_start.length = size_of::<block::Request>() as u32 - 1;
+            header_start.flags = virt_queue::Flag::Next as u16;
+            header_start.next = index2;
+        }
+
+        {
+            let data_descriptor = queue.descriptor_at(index2);
+            data_descriptor.addr = Phys::from_virt(buf.as_ptr());
+            data_descriptor.length = 512;
+            data_descriptor.flags =
+                (virt_queue::Flag::Write as u16) | (virt_queue::Flag::Next as u16);
+            data_descriptor.next = index3;
+        }
+
+        {
+            let header_status = queue.descriptor_at(index3);
+            header_status.addr = unsafe { phys.byte_add(offset_of!(block::Request, status)) };
+            header_status.length = size_of::<u8>() as u32;
+            header_status.flags = virt_queue::Flag::Write as u16;
+            header_status.next = virt_queue::DesctriptorIndex::LAST;
+        }
+
+        queue.submit(index);
+        drop(queue);
+        data_sync();
+
+        without_irq(|| -> crate::error::Result<()> {
+            // always using queue #0
+            unsafe { self.regs.queue_notify.get().write_volatile(0) };
+
+            sleep_on(core::ptr::from_ref(self).addr())
+        })?;
+
+        Ok(())
     }
 
     fn write(
