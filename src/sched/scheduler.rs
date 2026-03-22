@@ -7,8 +7,9 @@ use core::{
 use crate::{
     alloc::{Arc, Vec},
     arch::{self, PeMode},
-    error::Result,
+    error::{Error, Result},
     heap,
+    interrupts::{irq_state_save, without_irq},
     mmu::{AddressSpace, Page, PagePerm, TranslationTable},
     per_cpu,
     phys::Phys,
@@ -19,6 +20,7 @@ use crate::{
 static PROCCESSES: SpinLock<Vec<Arc<Process>>> = SpinLock::new(Vec::new());
 static NEXT_PID: AtomicU32 = AtomicU32::new(1);
 
+per_cpu!(CURRENT: Option<NonNull<Process>> = None);
 per_cpu!(SCHED_STACK: *mut u8 = null_mut());
 
 global_asm!(
@@ -106,11 +108,33 @@ pub fn setup_init_proc() -> Result<()> {
 pub fn sched() -> ! {
     loop {
         let proc = find_runnable_proc();
+        CURRENT.replace(Some(NonNull::from_ref(&*proc)));
         let sched_stack = SCHED_STACK.as_ptr();
-        unsafe {
-            stack_switch_unchecked(sched_stack, proc.sp);
-        }
+        without_irq(|| {
+            irq_state_save(|| unsafe {
+                stack_switch_unchecked(sched_stack, proc.sp);
+            })
+        });
+        // When stack_switch returns, it means the process yielded, and changed it's state from
+        // Running to something else.
     }
+}
+
+pub fn yield_to_sched(old_sp: *mut *mut u8) {
+    let sched_stack = SCHED_STACK.get();
+    // The scheduler switched with interrupts disabled, so we must return to it with interrupts
+    // still disabled.
+    without_irq(|| irq_state_save(|| unsafe { stack_switch_unchecked(old_sp, sched_stack) }))
+}
+
+pub fn sleep_on(chan: usize) -> Result<()> {
+    let old_sp = with_current(|current| {
+        current.state.store(State::Sleeping, Ordering::Relaxed);
+        current.chan.store(chan, Ordering::Relaxed);
+        addr_of_mut!(current.sp)
+    })?;
+    yield_to_sched(old_sp);
+    Ok(())
 }
 
 pub fn wakeup(chan: usize) {
@@ -145,6 +169,12 @@ fn find_runnable_proc() -> Arc<Process> {
             }
         }
     }
+}
+
+pub fn with_current<Ret, F: FnOnce(&mut Process) -> Ret>(f: F) -> Result<Ret> {
+    let borrow = CURRENT.try_borrow_mut().ok_or(Error::PerCpuReborrow)?;
+    let mut current_ptr = borrow.ok_or(Error::NoCurrentProcess)?;
+    Ok(f(unsafe { current_ptr.as_mut() }))
 }
 
 extern "C" {

@@ -17,6 +17,10 @@ pub(crate) enum Error {
     MemoryFault,
     #[error("Unsupported")]
     Unsupproted,
+    #[error("No current process")]
+    NoCurrentProcess,
+    #[error("Per CPU already borrowed")]
+    PerCpuReborrow,
 }
 
 pub(super) type Result<T> = core::result::Result<T, Error>;

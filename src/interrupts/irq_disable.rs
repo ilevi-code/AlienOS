@@ -19,3 +19,10 @@ pub fn without_irq<Ret, F: FnOnce() -> Ret>(f: F) -> Ret {
     }
     ret
 }
+
+pub fn irq_state_save<Ret, F: FnOnce() -> Ret>(f: F) -> Ret {
+    let depth = INTERRUPT_DISABLE_DEPTH.get();
+    let ret = f();
+    INTERRUPT_DISABLE_DEPTH.replace(depth);
+    ret
+}
