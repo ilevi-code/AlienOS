@@ -3,7 +3,9 @@ use core::{arch::asm, mem::offset_of, ptr::NonNull};
 use crate::{
     alloc::{Box, Unique},
     drivers::block::Device,
+    interrupts::without_irq,
     phys::{Phys, PhysMut},
+    sched::sleep_on,
     spinlock::SpinLock,
 };
 
@@ -293,8 +295,9 @@ pub mod block {
         volatile_reg_read!(capacity_low);
     }
 
-    const VIRTIO_BLK_T_IN: u32 = 0;
+    pub const VIRTIO_BLK_T_IN: u32 = 0;
     pub const VIRTIO_BLK_T_OUT: u32 = 1;
+
     #[repr(C, packed)]
     pub struct Request {
         pub request_type: u32,
@@ -464,8 +467,6 @@ impl Device for VirtioBlk {
         {
             let data_descriptor = queue.descriptor_at(index2);
             data_descriptor.addr = Phys::from_virt(buf.as_ptr());
-            // let aaa = Phys::from_virt(buf.as_ptr()).addr();
-            // crate::println!("AAAAAAAAAAAA {:?} {:x}", buf.as_ptr(), aaa);
             data_descriptor.length = 512;
             data_descriptor.flags = virt_queue::Flag::Next as u16;
             data_descriptor.next = index3;
@@ -483,8 +484,12 @@ impl Device for VirtioBlk {
         drop(queue);
         data_sync();
 
-        // always using queue #0
-        unsafe { self.regs.queue_notify.get().write_volatile(0) };
+        without_irq(|| -> crate::error::Result<()> {
+            // always using queue #0
+            unsafe { self.regs.queue_notify.get().write_volatile(0) };
+
+            sleep_on(core::ptr::from_ref(self).addr())
+        })?;
 
         Ok(())
     }
