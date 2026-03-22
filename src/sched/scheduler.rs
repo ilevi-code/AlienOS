@@ -31,9 +31,11 @@ global_asm!(
     "movt r2, #0",
     "push {{r0, r1, r2}}",
     "mov r1, sp",
+    // push null
     "mov r0, 0",
     "push {{r0}}",
     "mov r2, sp",
+    // exec("/sbin/init", null)
     "svc #0",
     ".global init_code_end",
     "init_code_end:",
