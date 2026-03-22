@@ -3,6 +3,8 @@ use atomic_enum::atomic_enum;
 use crate::{
     alloc::{Arc, Box, Vec},
     error::{Error, Result},
+    fs::FileSystem,
+    fs::NullFs,
     mmu::PAGE_SIZE,
     spinlock::SpinLock,
     sys::Errno,
@@ -41,6 +43,7 @@ pub struct Process {
     pub fd: FdTable,
     pub chan: AtomicUsize,
     pub state: AtomicState,
+    pub fs: Arc<dyn FileSystem>,
 }
 
 pub struct StackPointer<'stack> {
@@ -92,6 +95,7 @@ impl Process {
             fd: SpinLock::new(Vec::new()),
             chan: AtomicUsize::new(0),
             state: AtomicState::new(State::Runnable),
+            fs: Arc::new(NullFs::new())?,
         })
     }
 }
