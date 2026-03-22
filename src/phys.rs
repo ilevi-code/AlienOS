@@ -85,7 +85,13 @@ impl<T> From<usize> for PhysMut<T> {
 }
 
 impl<T> From<*mut T> for Phys<T> {
-    fn from(ptr: *mut T) -> Phys<T> {
+    fn from(ptr: *mut T) -> Self {
+        Self(ptr)
+    }
+}
+
+impl<T> From<*mut T> for PhysMut<T> {
+    fn from(ptr: *mut T) -> Self {
         Self(ptr)
     }
 }

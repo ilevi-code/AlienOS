@@ -33,9 +33,9 @@ pub struct TranslationTable<'a> {
 
 impl<'a> TranslationTable<'a> {
     pub fn get_kernel() -> Self {
-        let base = crate::arch::get_ttbr1();
+        let base: PhysMut<L1Table> = (crate::arch::get_ttbr1() as *mut L1Table).into();
         Self {
-            table: unsafe { &mut *(base as *mut L1Table) },
+            table: unsafe { &mut *(base.into_virt()) },
             address_space: AddressSpace::Kernel,
         }
     }
