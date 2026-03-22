@@ -1,7 +1,7 @@
 use atomic_enum::atomic_enum;
 
 use crate::{
-    alloc::{Box, Vec},
+    alloc::{Arc, Box, Vec},
     error::{Error, Result},
     mmu::PAGE_SIZE,
     spinlock::SpinLock,
@@ -14,22 +14,7 @@ pub trait File {
     fn read(&mut self, buf: User<[u8]>) -> core::result::Result<(), Errno>;
 }
 
-use core::{
-    arch::global_asm, marker::PhantomData, ops::Deref, ptr::null_mut, sync::atomic::AtomicUsize,
-};
-
-struct Arc<T> {
-    ptr: *const T,
-    ref_count: *const AtomicUsize,
-}
-
-impl<T> Deref for Arc<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.ptr }
-    }
-}
+use core::{marker::PhantomData, ptr::null_mut, sync::atomic::AtomicUsize};
 
 #[atomic_enum]
 #[derive(PartialEq)]
