@@ -2,6 +2,7 @@ mod copy_from_user;
 mod disk;
 mod errno;
 mod exec;
+mod mount;
 mod syscall;
 
 pub use copy_from_user::copy_from_user;

@@ -45,3 +45,9 @@ fn find_disk_by_intterrupt(interrupt: u32) -> Option<Arc<dyn Device>> {
     }
     None
 }
+
+pub fn get_disk_by_id(id: usize) -> Option<Arc<dyn Device>> {
+    let disks = DISKS.lock();
+    let disk = &(disks.get(id)?.1);
+    Some(Arc::clone(disk))
+}

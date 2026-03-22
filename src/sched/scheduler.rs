@@ -28,6 +28,18 @@ global_asm!(
     ".type init_code, \"function\"",
     ".global init_code",
     "init_code:",
+    // push "ext2" to stack
+    "movw r0, #0x7865",
+    "movt r0, #0x3274",
+    "mov r1, #0",
+    "push {{r0, r1}}",
+    "mov r2, sp",
+    // disk #0
+    "mov r1, 0",
+    // sys_mount
+    "mov r0, 1",
+    // mount(0, "ext2")
+    "svc #0",
     // Push "/sbin/init" to stack
     "movw r0, #0x732f",
     "movt r0, #0x6962",

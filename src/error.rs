@@ -21,6 +21,8 @@ pub(crate) enum Error {
     NoCurrentProcess,
     #[error("Per CPU already borrowed")]
     PerCpuReborrow,
+    #[error("No such device")]
+    NoDevice,
 }
 
 pub(super) type Result<T> = core::result::Result<T, Error>;

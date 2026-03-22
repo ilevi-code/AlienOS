@@ -137,6 +137,13 @@ impl<T> Vec<T> {
         self.length += new_len;
         Ok(())
     }
+
+    pub fn get<I>(&self, index: I) -> Option<&I::Output>
+    where
+        I: SliceIndex<[T]>,
+    {
+        index.get(&self[..])
+    }
 }
 
 impl<T> Drop for Vec<T> {
