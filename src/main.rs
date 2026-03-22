@@ -45,7 +45,6 @@ use mmu::TranslationTable;
 use spinlock::SpinLock;
 
 use crate::alloc::Arc;
-use crate::drivers::block::Device;
 use crate::interrupts::Interrupt;
 use crate::sys::register_disk;
 use crate::{alloc::Unique, interrupts::InterruptController};
@@ -136,29 +135,6 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
         Interrupt::Spi(0x2f),
     )
     .expect("Failed to register disk");
-    // let mut r = alloc::Box::<drivers::virtio_blk::block::Request>::zeroed().unwrap();
-    // r.request_type = drivers::virtio_blk::block::VIRTIO_BLK_T_OUT;
-    // r.data[0] = 1;
-    // blk.write(r);
-
-    // let mut lock = DISK.lock();
-    // *lock = Some(blk);
-    // drop(lock);
-    // interrupts::without_irq(|| {
-    //     interrupts::CONTROLLER
-    //         .lock()
-    //         .as_mut()
-    //         .unwrap()
-    //         .register(Interrupt::Spi(0x2f), disk_isr);
-    // });
-
-    let mut data = [0; 512];
-    data[0] = 1;
-    data[1] = 2;
-    let _ = disk.write(&data, 0);
-    for _ in 0..1000_usize {
-        core::hint::black_box(1);
-    }
 
     sys::init_syscalls().expect("Failed to init syscall table");
     sched::setup_init_proc().expect("Failed to setup init");
@@ -195,17 +171,3 @@ fn timer_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {
     timer.arm(timer.frequency());
     console::println!("Timer!");
 }
-
-// fn disk_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {
-//     let mut guard = DISK.lock();
-//     let Some(blk) = guard.as_mut() else {
-//         return;
-//     };
-//     blk.status();
-//     blk.ack_interrupt();
-//     // wakeup(disk.as_ptr().addr());
-//     blk.check_used();
-// }
-
-// static DISK: spinlock::SpinLock<Option<drivers::virtio_blk::VirtioBlk>> =
-//     spinlock::SpinLock::new(None);
