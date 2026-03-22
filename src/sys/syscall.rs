@@ -78,4 +78,5 @@ fn svc_handler(regs: *mut RegSet) {
         }
     };
     syscall(regs);
+    regs.lr += 4;
 }
