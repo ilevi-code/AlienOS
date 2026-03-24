@@ -51,12 +51,13 @@ pub mod virt_queue {
         flags: u16,
         index: u16,
         ring: [UsedElement; VIRT_QUEUE_SIZE],
+        _avail_event: u16,
     }
 
     #[repr(C, packed)]
     #[derive(Clone, Copy)]
     struct UsedElement {
-        id: DesctriptorIndex,
+        id: u32,
         len: u32,
     }
 
@@ -98,6 +99,7 @@ pub mod virt_queue {
         pub fn alloc_descriptor(&mut self) -> DesctriptorIndex {
             let desc = self.free_desc;
             self.free_desc = self.descriptors[self.free_desc.0 as usize].next;
+            self.descriptors[desc.0 as usize].next = DesctriptorIndex(0);
             desc
         }
 
@@ -122,8 +124,8 @@ pub mod virt_queue {
         }
 
         pub fn used_index(&self) -> DesctriptorIndex {
-            let i = self.used.index;
-            self.used.ring[i as usize].id
+            let i = (self.used.index as usize) % self.used.ring.len();
+            DesctriptorIndex(self.used.ring[i].id as u16)
         }
     }
 }
