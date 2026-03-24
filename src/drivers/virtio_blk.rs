@@ -108,7 +108,6 @@ pub mod virt_queue {
         }
 
         pub fn submit(&mut self, index: DesctriptorIndex) {
-            crate::console::println!("submit idx: {:x}", index.0);
             self.available.ring[self.available.index as usize] = index;
             data_sync();
             self.available.index = self.available.index.wrapping_add(1);
@@ -368,7 +367,6 @@ impl VirtioBlkBuilder {
                 .cast::<block::VirtioBlkConfig>()
         };
         let config = unsafe { config.as_ref() }.unwrap();
-        crate::console::println!("status: {:x}", regs.status());
         crate::console::println!("disk contains {:x} sectors", config.capacity_low());
 
         // fill the blk-config
@@ -428,7 +426,6 @@ impl VirtioBlk {
         let descriptor = queue.descriptor_at(next);
         let addr = descriptor.addr;
         let addr = addr.into_virt();
-        crate::console::println!("desc status: {:x}", unsafe { addr.read_volatile() });
     }
 }
 
@@ -485,6 +482,7 @@ impl Device for VirtioBlk {
             unsafe { self.regs.queue_notify.get().write_volatile(0) };
 
             sleep_on(core::ptr::from_ref(self).addr())
+            // TODO verify that our request finished, and check it's status, and free allocated indices
         })?;
 
         Ok(())
@@ -540,6 +538,7 @@ impl Device for VirtioBlk {
             unsafe { self.regs.queue_notify.get().write_volatile(0) };
 
             sleep_on(core::ptr::from_ref(self).addr())
+            // TODO verify that our request finished, and check it's status, and free allocated indices
         })?;
 
         Ok(())
@@ -548,7 +547,7 @@ impl Device for VirtioBlk {
     fn ack_interrupt(&self) {
         self.status();
         let int_status = self.regs.interrupt_status();
-        // SAFETY:
+        // Safety:
         // regs are MMIO
         unsafe { self.regs.interrupt_ack.get().write_volatile(int_status) };
     }
