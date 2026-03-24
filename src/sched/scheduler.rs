@@ -150,6 +150,10 @@ pub fn sleep_on(chan: usize) -> Result<()> {
 }
 
 pub fn wakeup(chan: usize) {
+    without_irq(|| wakeup_irq_disabled(chan))
+}
+
+fn wakeup_irq_disabled(chan: usize) {
     let guard = PROCCESSES.lock();
     for i in 0..guard.len() {
         if guard[i].chan.load(Ordering::Acquire) == chan {
@@ -164,23 +168,30 @@ pub fn wakeup(chan: usize) {
 }
 
 fn find_runnable_proc() -> Arc<Process> {
-    let guard = PROCCESSES.lock();
     loop {
-        for i in 0..guard.len() {
-            if guard[i]
-                .state
-                .compare_exchange(
-                    State::Runnable,
-                    State::Running,
-                    Ordering::Acquire,
-                    Ordering::Relaxed,
-                )
-                .is_ok()
-            {
-                return Arc::clone(&guard[i]);
-            }
+        if let Some(proc) = without_irq(|| search_runnable_proc()) {
+            return proc;
         }
     }
+}
+
+fn search_runnable_proc() -> Option<Arc<Process>> {
+    let guard = PROCCESSES.lock();
+    for i in 0..guard.len() {
+        if guard[i]
+            .state
+            .compare_exchange(
+                State::Runnable,
+                State::Running,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            )
+            .is_ok()
+        {
+            return Some(Arc::clone(&guard[i]));
+        }
+    }
+    None
 }
 
 pub fn with_current<Ret, F: FnOnce(&mut Process) -> Ret>(f: F) -> Result<Ret> {
