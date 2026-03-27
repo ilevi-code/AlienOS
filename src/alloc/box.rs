@@ -2,7 +2,8 @@ use crate::error::Error;
 use crate::{error::Result, heap::ALLOCATOR};
 
 use core::alloc::{GlobalAlloc, Layout};
-use core::ops::{Deref, DerefMut};
+use core::marker::Unsize;
+use core::ops::{CoerceUnsized, Deref, DerefMut, DispatchFromDyn};
 use core::{mem::MaybeUninit, ptr::NonNull};
 
 pub(crate) struct Box<T: ?Sized>(NonNull<T>);
@@ -109,4 +110,10 @@ where
     }
 }
 
-impl<T, U: ?Sized> core::ops::CoerceUnsized<Box<U>> for Box<T> where T: core::marker::Unsize<U> {}
+unsafe impl<T> Send for Box<T> where T: Send + Sync + ?Sized {}
+
+unsafe impl<T> Sync for Box<T> where T: Send + Sync + ?Sized {}
+
+impl<T: ?Sized, U: ?Sized> CoerceUnsized<Box<U>> for Box<T> where T: Unsize<U> {}
+
+impl<T: ?Sized, U: ?Sized> DispatchFromDyn<Box<U>> for Box<T> where T: Unsize<U> {}

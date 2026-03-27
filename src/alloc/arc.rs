@@ -1,5 +1,5 @@
-use core::marker::PhantomData;
-use core::ops::Deref;
+use core::marker::{PhantomData, Unsize};
+use core::ops::{CoerceUnsized, Deref, DispatchFromDyn};
 use core::ptr::NonNull;
 use core::sync::atomic::{self, AtomicUsize, Ordering};
 
@@ -38,8 +38,8 @@ impl<T: ?Sized> Arc<T> {
     }
 }
 
-unsafe impl<T: Sync + Send> Send for Arc<T> {}
-unsafe impl<T: Sync + Send> Sync for Arc<T> {}
+unsafe impl<T: Sync + Send + ?Sized> Send for Arc<T> {}
+unsafe impl<T: Sync + Send + ?Sized> Sync for Arc<T> {}
 
 impl<T: ?Sized> Deref for Arc<T> {
     type Target = T;
@@ -86,7 +86,6 @@ impl<T: ?Sized> Drop for Arc<T> {
     }
 }
 
-impl<T: ?Sized, U: ?Sized> core::ops::CoerceUnsized<Arc<U>> for Arc<T> where
-    T: core::marker::Unsize<U>
-{
-}
+impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Arc<U>> for Arc<T> {}
+
+impl<T: ?Sized, U: ?Sized> DispatchFromDyn<Arc<U>> for Arc<T> where T: Unsize<U> {}

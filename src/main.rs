@@ -5,7 +5,9 @@
     custom_test_frameworks,
     coerce_unsized,
     unsize,
-    slice_index_methods
+    slice_index_methods,
+    dispatch_from_dyn,
+    arbitrary_self_types
 )]
 #![test_runner(crate::testing::test_runner)]
 #![no_std]
