@@ -1,9 +1,9 @@
 use crate::{
-    alloc::Box,
+    alloc::{Arc, Box},
     error::Result,
-    fs::{Inode, Path},
+    fs::{File, Path},
 };
 
 pub trait FileSystem {
-    fn path_to_inode(&self, path: &Path) -> Result<Box<Inode>>;
+    fn open(self: Arc<Self>, path: &Path) -> Result<Box<dyn File>>;
 }

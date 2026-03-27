@@ -1,7 +1,7 @@
 use crate::{
-    alloc::Box,
+    alloc::{Arc, Box},
     error::Error,
-    fs::{FileSystem, Inode, Path},
+    fs::{File, FileSystem, Path},
 };
 
 pub struct NullFs {}
@@ -13,7 +13,7 @@ impl NullFs {
 }
 
 impl FileSystem for NullFs {
-    fn path_to_inode(&self, _path: &Path) -> crate::error::Result<Box<Inode>> {
+    fn open(self: Arc<Self>, _path: &Path) -> crate::error::Result<Box<dyn File>> {
         Err(Error::Unsupproted)
     }
 }

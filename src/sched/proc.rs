@@ -3,18 +3,11 @@ use atomic_enum::atomic_enum;
 use crate::{
     alloc::{Arc, Box, Vec},
     error::{Error, Result},
-    fs::FileSystem,
-    fs::NullFs,
+    fs::{File, FileSystem, NullFs},
     mmu::PAGE_SIZE,
     spinlock::SpinLock,
     sys::Errno,
 };
-
-pub struct User<T: ?Sized>(T);
-
-pub trait File {
-    fn read(&mut self, buf: User<[u8]>) -> core::result::Result<(), Errno>;
-}
 
 use core::{marker::PhantomData, ptr::null_mut, sync::atomic::AtomicUsize};
 

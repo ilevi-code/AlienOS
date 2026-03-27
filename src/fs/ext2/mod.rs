@@ -1,4 +1,9 @@
-use crate::{alloc::Arc, drivers::block::Device, error::Result, fs::FileSystem, println};
+use crate::{
+    alloc::{Arc, Box},
+    drivers::block::Device,
+    error::Result,
+    fs::{File, FileSystem},
+};
 
 pub struct Ext2 {
     dev: Arc<dyn Device>,
@@ -11,7 +16,7 @@ impl Ext2 {
 }
 
 impl FileSystem for Ext2 {
-    fn path_to_inode(&self, path: &super::Path) -> Result<crate::alloc::Box<super::Inode>> {
+    fn open(self: Arc<Self>, path: &super::Path) -> Result<Box<dyn File>> {
         todo!()
     }
 }

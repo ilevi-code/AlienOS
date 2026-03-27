@@ -1,6 +1,14 @@
 use crate::error::{Error, Result};
 use core::{arch::global_asm, cmp::min};
 
+pub struct User<T>(T);
+
+impl User<&[u8]> {
+    pub fn from_raw_parts(user_ptr: *const u8, len: usize) -> Self {
+        Self(unsafe { core::slice::from_raw_parts(user_ptr, len) })
+    }
+}
+
 global_asm!(
     ".section \".text\", \"ax\"",
     ".global copy_from_user_asm",
@@ -31,9 +39,14 @@ extern "C" {
 }
 
 #[inline]
-pub fn copy_from_user(dest: &mut [u8], src: &[u8]) -> Result<()> {
-    let ret =
-        unsafe { copy_from_user_asm(dest.as_mut_ptr(), src.as_ptr(), min(dest.len(), src.len())) };
+pub fn copy_from_user(dest: &mut [u8], src: User<&[u8]>) -> Result<()> {
+    let ret = unsafe {
+        copy_from_user_asm(
+            dest.as_mut_ptr(),
+            src.0.as_ptr(),
+            min(dest.len(), src.0.len()),
+        )
+    };
     if ret == 0 {
         Ok(())
     } else {
