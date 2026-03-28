@@ -24,6 +24,7 @@ fn mount(regs: &mut RegSet) -> SyscallResult {
         str::from_utf8(&dest).unwrap_or("<bad filesystem>")
     );
     let disk = crate::sys::disk::get_disk_by_id(disk_id).ok_or(Error::NoDevice)?;
+    // TODO actually check the requested filesystem
     let fs = Arc::new(Ext2::new(disk)?)?;
     with_current(|current| current.fs = fs)?;
     Ok(0)
