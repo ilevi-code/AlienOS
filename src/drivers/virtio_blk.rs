@@ -1,10 +1,10 @@
-use core::{arch::asm, mem::offset_of, ptr::NonNull};
+use core::{arch::asm, mem::offset_of};
 
 use crate::{
     alloc::{Box, Unique},
     drivers::block::Device,
     interrupts::without_irq,
-    phys::{Phys, PhysMut},
+    phys::Phys,
     sched::sleep_on,
     spinlock::SpinLock,
 };
@@ -251,8 +251,7 @@ pub mod regs {
 }
 
 pub mod block {
-    use core::ptr::{addr_of, addr_of_mut};
-    use paste::paste;
+    use core::ptr::addr_of;
 
     #[repr(C, packed)]
     struct Geometry {
@@ -314,7 +313,6 @@ pub enum Error {
     BadMagic,
     BadVersion,
     FeatureNegotiationFailed,
-    AllocError,
     QueueInUse,
     QueueTooBig,
     QueueUnavailable,
@@ -410,8 +408,6 @@ impl VirtioBlkBuilder {
 
 impl VirtioBlk {
     pub fn status(&self) {
-        crate::console::println!("status: {:x}", self.regs.status());
-        crate::console::println!("int status: {:x}", self.regs.interrupt_status());
         self.check_used()
     }
 
