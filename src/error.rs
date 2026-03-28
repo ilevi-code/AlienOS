@@ -23,6 +23,14 @@ pub(crate) enum Error {
     PerCpuReborrow,
     #[error("No such device")]
     NoDevice,
+    #[error("Entry not found")]
+    NoEntry,
+    #[error("Not a directory")]
+    NotADir,
+    #[error("Is a directory")]
+    IsADir,
+    #[error("Bad downcast")]
+    BadDowncast,
 }
 
 pub(super) type Result<T> = core::result::Result<T, Error>;

@@ -1,6 +1,7 @@
 use crate::{
-    alloc::Arc,
-    fs::{FileSystem, Path},
+    alloc::{Arc, Box},
+    error::Result,
+    fs::{File, FileSystem, Path},
     interrupts::RegSet,
     println,
     sched::with_current,
@@ -19,6 +20,11 @@ fn exec(regs: &mut RegSet) -> SyscallResult {
     let path = Path::new(&dest);
     println!("exec: {path:?}");
     let fs = with_current(|current| Arc::clone(&current.fs))?;
-    let _ = FileSystem::open(Arc::clone(&fs), path)?;
+    let file = FileSystem::open(Arc::clone(&fs), path)?;
+    exec_load(file)?;
     Ok(0)
+}
+
+fn exec_load(elf: Box<dyn File>) -> Result<()> {
+    todo!();
 }

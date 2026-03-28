@@ -11,7 +11,7 @@ pub struct Inode {
     _dtime: u32,
     _gid: u16,
     _link_count: u16,
-    _blocks: u32,
+    pub blocks: u32,
     _flags: u32,
     _osd1: u32,
     pub block: [u32; 15],
