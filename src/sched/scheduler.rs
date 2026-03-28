@@ -149,6 +149,11 @@ pub fn sleep_on(chan: usize) -> Result<()> {
     Ok(())
 }
 
+pub fn with_current<Ret, F: FnOnce(&mut Process) -> Ret>(f: F) -> Result<Ret> {
+    let mut current = CURRENT.get().ok_or(Error::NoCurrentProcess)?;
+    Ok(f(unsafe { current.as_mut() }))
+}
+
 pub fn wakeup(chan: usize) {
     without_irq(|| wakeup_irq_disabled(chan))
 }
@@ -169,7 +174,7 @@ fn wakeup_irq_disabled(chan: usize) {
 
 fn find_runnable_proc() -> Arc<Process> {
     loop {
-        if let Some(proc) = without_irq(|| search_runnable_proc()) {
+        if let Some(proc) = without_irq(search_runnable_proc) {
             return proc;
         }
     }
@@ -192,12 +197,6 @@ fn search_runnable_proc() -> Option<Arc<Process>> {
         }
     }
     None
-}
-
-pub fn with_current<Ret, F: FnOnce(&mut Process) -> Ret>(f: F) -> Result<Ret> {
-    let borrow = CURRENT.try_borrow_mut().ok_or(Error::PerCpuReborrow)?;
-    let mut current_ptr = borrow.ok_or(Error::NoCurrentProcess)?;
-    Ok(f(unsafe { current_ptr.as_mut() }))
 }
 
 extern "C" {
