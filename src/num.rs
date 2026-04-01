@@ -39,12 +39,9 @@ where
     }
 }
 
+#[allow(unused)]
 pub trait AlignUp {
     fn align_up(self, align: Self) -> Self;
-
-    fn align_up_overflowing(self, align: Self) -> (Self, bool)
-    where
-        Self: Sized;
 }
 
 impl<T> AlignUp for T
@@ -70,18 +67,6 @@ where
             } else {
                 value
             }
-        }
-    }
-
-    fn align_up_overflowing(self, align: Self) -> (Self, bool)
-    where
-        Self: Sized,
-    {
-        let rem = self % align;
-        if rem == Self::zero() {
-            (self, false)
-        } else {
-            (self - rem).overflowing_add(align)
         }
     }
 }

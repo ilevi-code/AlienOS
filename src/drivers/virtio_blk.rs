@@ -25,7 +25,6 @@ pub mod virt_queue {
     pub enum Flag {
         Next = 1,
         Write = 2,
-        Indirect = 4,
     }
     pub const VIRT_QUEUE_SIZE: usize = 128;
 
@@ -157,7 +156,6 @@ macro_rules! volatile_reg {
 }
 
 enum DeviceId {
-    Network = 1,
     Block = 2,
 }
 

@@ -12,10 +12,6 @@ impl<T> Phys<T> {
         self.0 as usize
     }
 
-    pub fn cast<U>(self) -> Phys<U> {
-        Phys::<U>(self.0 as *const U)
-    }
-
     pub unsafe fn byte_add(self, count: usize) -> Self {
         Self(self.0.byte_add(count))
     }
@@ -34,10 +30,6 @@ impl<T: ?Sized> Phys<T> {
 impl<T> PhysMut<T> {
     pub fn addr(&self) -> usize {
         self.0.addr()
-    }
-
-    pub fn cast<U>(self) -> Phys<U> {
-        Phys::<U>(self.0 as *const U)
     }
 
     pub fn from_virt(ptr: *mut T) -> Self {

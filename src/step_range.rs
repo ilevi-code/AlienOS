@@ -1,5 +1,4 @@
 use core::cmp::Ord;
-use core::mem;
 use core::ops::{Add, Range};
 
 use crate::num::{AlignDown, AlignUp, OverflowingAdd};

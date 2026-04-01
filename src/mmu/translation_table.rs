@@ -317,8 +317,4 @@ impl<'a> TranslationTable<'a> {
         }
         Ok(start)
     }
-
-    pub fn seek_next_region(&self, _seek_after: usize) -> Option<usize> {
-        todo!();
-    }
 }

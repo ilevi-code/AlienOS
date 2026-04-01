@@ -2,7 +2,7 @@ use crate::{
     alloc::{Arc, Vec},
     drivers::block::Device,
     error::{Error, Result},
-    interrupts::{self, without_irq, Interrupt, InterruptController, RegSet},
+    interrupts::{self, without_irq, Interrupt, RegSet},
     sched::wakeup,
     spinlock::SpinLock,
 };

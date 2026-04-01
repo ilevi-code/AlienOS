@@ -6,7 +6,6 @@ use crate::{
     fs::{File, FileSystem, NullFs},
     mmu::PAGE_SIZE,
     spinlock::SpinLock,
-    sys::Errno,
 };
 
 use core::{marker::PhantomData, ptr::null_mut, sync::atomic::AtomicUsize};

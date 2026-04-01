@@ -1,8 +1,3 @@
-use core::{
-    ptr::{self, NonNull},
-    slice,
-};
-
 mod consts;
 mod dir_entries;
 mod ext2;

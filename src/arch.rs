@@ -28,20 +28,6 @@ pub fn set_ttbr1(table: usize) {
     }
 }
 
-pub fn get_ttbcr() -> usize {
-    let value;
-    unsafe {
-        asm!("MRC p15, 0, {}, c2, c0, 2", out(reg) value);
-    }
-    value
-}
-
-pub fn set_ttbcr(value: usize) {
-    unsafe {
-        asm!("MCR p15, 0, {}, c2, c0, 2", in(reg) value);
-    }
-}
-
 pub fn get_cpsr() -> usize {
     let value;
     unsafe {

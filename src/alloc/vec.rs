@@ -78,12 +78,6 @@ impl<T> Vec<T> {
         Ok(())
     }
 
-    fn move_into(&mut self, new: *mut T) {
-        unsafe {
-            new.copy_from_nonoverlapping(self.buf, self.length);
-        }
-    }
-
     pub(crate) fn push(&mut self, value: T) -> Result<()> {
         if self.length == self.capacity {
             self.grow(1)?

@@ -1,6 +1,5 @@
 use core::{
     alloc::Layout,
-    cmp::Ordering,
     num::NonZero,
     ops::{Add, AddAssign, Sub},
     ptr::NonNull,
@@ -41,12 +40,6 @@ pub(super) struct ExtractionReult {
 }
 
 const_assert!(size_of::<Block>() == 8);
-
-pub(super) enum SizeFit {
-    Misfit,
-    Exact,
-    Excess,
-}
 
 impl Block {
     pub(super) fn init_at(ptr: NonNull<u8>, size: BlockSize) -> NonNull<Self> {
@@ -159,10 +152,6 @@ impl Block {
             }
         };
         Some(result)
-    }
-
-    pub(super) fn size(&self) -> BlockSize {
-        self.size
     }
 }
 

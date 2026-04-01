@@ -47,7 +47,7 @@ impl<'data> Parse<'data> for Pl011 {
                         .read_u64()
                         .ok_or(FdtParseError::ValueTooShort("pl011", "reg"))?
                         as usize;
-                    let size = reader
+                    let _size = reader
                         .read_u64()
                         .ok_or(FdtParseError::ValueTooShort("pl011", "reg"))?
                         as usize;

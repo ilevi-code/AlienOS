@@ -10,9 +10,6 @@ const MEM_START: usize = 0x4000_0000;
 pub const KERN_LINK: usize = 0x8000_0000;
 pub const PHYS_TO_VIRT: usize = KERN_LINK - MEM_START;
 
-// See `init_stack` in boot.ld
-pub const BOOT_STACK_SIZE: usize = 0x1000;
-
 // defined by linker script
 extern "C" {
     static kernel_start: u8;

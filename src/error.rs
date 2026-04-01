@@ -19,8 +19,6 @@ pub(crate) enum Error {
     Unsupproted,
     #[error("No current process")]
     NoCurrentProcess,
-    #[error("Per CPU already borrowed")]
-    PerCpuReborrow,
     #[error("No such device")]
     NoDevice,
     #[error("Entry not found")]
@@ -29,8 +27,6 @@ pub(crate) enum Error {
     NotADir,
     #[error("Is a directory")]
     IsADir,
-    #[error("Bad downcast")]
-    BadDowncast,
     #[error("Bad ELF")]
     BadElf,
 }

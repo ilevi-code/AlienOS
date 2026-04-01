@@ -2,7 +2,7 @@ use crate::error::{Error, Result};
 use core::alloc::Layout;
 use core::ptr::NonNull;
 
-use super::block::{Block, BlockLayout, BlockSize, SizeFit};
+use super::block::{Block, BlockLayout, BlockSize};
 
 pub(super) struct KernAlloctor {
     curr: NonNull<Block>,
@@ -19,13 +19,11 @@ impl KernAlloctor {
         }
     }
     pub(super) fn alloc(&mut self, layout: Layout) -> Result<*mut u8> {
-        let s = layout.size();
         let layout = BlockLayout::from(layout);
         let ptr = match self.look_for_freed_block(layout) {
             Some(block) => block,
             None => self.do_alloc(layout)?,
         };
-        // crate::println!("+++++++++ alloc returned {:?} (size={:x})", ptr, s);
         Ok(ptr)
     }
 

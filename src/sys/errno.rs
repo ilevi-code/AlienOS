@@ -2,7 +2,6 @@ use crate::error::Error;
 
 pub enum Errno {
     Fault,
-    InvalidFd,
     NoSyscall,
     OutOfMem,
     NoSuchDevice,
@@ -21,12 +20,10 @@ impl From<crate::error::Error> for Errno {
             Error::MemoryFault => Errno::Fault,
             Error::NoDevice => Errno::NoSuchDevice,
             Error::IsADir => Errno::IsADir,
-            Error::PerCpuReborrow
-            | Error::NoCurrentProcess
+            Error::NoCurrentProcess
             | Error::Unsupproted
             | Error::OutOfRange
             | Error::Remap
-            | Error::BadDowncast
             | Error::LayoutError(_) => Errno::Internal,
             Error::NoEntry => Errno::NotADir,
             Error::NotADir => Errno::NoEntry,
