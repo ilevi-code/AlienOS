@@ -86,7 +86,7 @@ impl<T: ?Sized> Drop for Box<T> {
     }
 }
 
-impl<T> Deref for Box<T> {
+impl<T: ?Sized> Deref for Box<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -94,7 +94,7 @@ impl<T> Deref for Box<T> {
     }
 }
 
-impl<T> DerefMut for Box<T> {
+impl<T: ?Sized> DerefMut for Box<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { self.0.as_mut() }
     }
