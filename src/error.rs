@@ -31,6 +31,8 @@ pub(crate) enum Error {
     IsADir,
     #[error("Bad downcast")]
     BadDowncast,
+    #[error("Bad ELF")]
+    BadElf,
 }
 
 pub(super) type Result<T> = core::result::Result<T, Error>;

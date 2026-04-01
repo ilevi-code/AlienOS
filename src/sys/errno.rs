@@ -10,11 +10,13 @@ pub enum Errno {
     NotADir,
     NoEntry,
     IsADir,
+    NotExecutable,
 }
 
 impl From<crate::error::Error> for Errno {
     fn from(value: crate::error::Error) -> Self {
         match value {
+            Error::BadElf => Errno::NotExecutable,
             Error::OutOfMem => Errno::OutOfMem,
             Error::MemoryFault => Errno::Fault,
             Error::NoDevice => Errno::NoSuchDevice,

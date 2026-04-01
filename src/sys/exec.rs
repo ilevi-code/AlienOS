@@ -1,11 +1,16 @@
+use core::slice;
+
 use crate::{
     alloc::{Arc, Box},
-    error::Result,
-    fs::{File, FileSystem, Path},
+    error::{Error, Result},
+    fs::{read_into, File, FileSystem, Path},
     interrupts::RegSet,
     println,
     sched::with_current,
-    sys::{SyscallResult, User},
+    sys::{
+        ElfHeader, SyscallResult, User, ELF_IDENT_CLASS32, ELF_IDENT_DATA_2LSB, ELF_IDENT_MAGIC,
+        ELF_MACHINE_ARM, ELF_TYPE_EXEC, ELF_VERSION_CURRENT,
+    },
     syscall,
 };
 
@@ -24,6 +29,24 @@ fn exec(regs: &mut RegSet) -> SyscallResult {
     Ok(0)
 }
 
-fn exec_load(elf: Box<dyn File>) -> Result<()> {
+fn exec_load(mut elf: Box<dyn File>) -> Result<()> {
+    let mut header = ElfHeader::default();
+    read_into(&mut *elf, &mut header)?;
+    if header.ident.magic != ELF_IDENT_MAGIC
+        || header.ident.class != ELF_IDENT_CLASS32
+        || header.ident.data != ELF_IDENT_DATA_2LSB
+        || header.ident.os_abi != 0
+        || header.elf_type != ELF_TYPE_EXEC
+        || header.machine != ELF_MACHINE_ARM
+        || header.version != ELF_VERSION_CURRENT
+    {
+        with_current(|current| {
+            if current.pid == 1 {
+                panic!("Handle non executable in init");
+            }
+        })?;
+        return Err(Error::BadElf);
+    }
+    println!("{header:x?}");
     todo!();
 }
