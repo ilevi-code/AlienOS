@@ -1,3 +1,5 @@
+use core::slice;
+
 use crate::{
     alloc::Arc,
     error::Error,
@@ -13,10 +15,9 @@ syscall!(mount);
 
 fn mount(regs: &mut RegSet) -> SyscallResult {
     let mut dest = [0_u8; 4];
-    crate::sys::copy_from_user(
-        &mut dest,
-        User::<&[u8]>::from_raw_parts(regs.r[2] as *const u8, 4),
-    )?;
+    crate::sys::copy_from_user(&mut dest, unsafe {
+        slice::from_raw_parts(regs.r[2] as *const User<u8>, 4)
+    })?;
     let disk_id = regs.r[1];
     println!(
         "mounting disk {} as {}",
