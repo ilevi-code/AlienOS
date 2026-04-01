@@ -4,7 +4,7 @@ use static_assertions::const_assert;
 pub struct Inode {
     _mode: u16,
     _uid: u16,
-    __size: u32,
+    pub size: u32,
     _atime: u32,
     _ctime: u32,
     _mtime: u32,

@@ -11,6 +11,7 @@ use crate::{
                 ROOT_INODE, SUPERBLOCK_SECTOR,
             },
             dir_entries::DirEntries,
+            file::Ext2File,
             inode::Inode,
             revision::Revision,
             superblock::Superblock,
@@ -87,7 +88,7 @@ impl Ext2 {
     pub fn read_block(&self, block_num: u32) -> Result<Vec<u8>> {
         let mut data = Vec::<u8>::new();
 
-        self.read_block_into(block_num, &mut data);
+        self.read_block_into(block_num, &mut data)?;
 
         Ok(data)
     }
@@ -143,7 +144,8 @@ impl Ext2 {
 
 impl FileSystem for Ext2 {
     fn open(self: Arc<Self>, path: &Path) -> Result<Box<dyn File>> {
-        let _inode = self.path_to_inode(path)?;
-        todo!();
+        let inode = self.path_to_inode(path)?;
+        let file: Box<dyn File> = Box::new(Ext2File::new(self, inode))?;
+        Ok(file)
     }
 }
