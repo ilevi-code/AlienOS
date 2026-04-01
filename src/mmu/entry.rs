@@ -5,6 +5,7 @@ use crate::mmu::l2entry::L2Entry;
 use crate::mmu::PagePerm;
 use crate::phys::{Phys, PhysMut};
 
+#[allow(unused)]
 const L1_ENTRY_COUNT: usize = 4096;
 const L2_ENTRY_COUNT: usize = 256;
 
@@ -34,14 +35,14 @@ pub(super) type Section = [u8; 1024 * 1024];
 pub(super) enum EntryKind {
     Unmapped,
     SeconLevelTable(Phys<SeconLevelTable>),
-    Section(Phys<Section>),
+    Section(#[allow(unused)] Phys<Section>),
     SuperSection,
 }
 
 pub(super) enum EntryKindMut {
     Unmapped,
     SeconLevelTable(PhysMut<SeconLevelTable>),
-    Section(PhysMut<Section>),
+    Section(#[allow(unused)] PhysMut<Section>),
     SuperSection,
 }
 

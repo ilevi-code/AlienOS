@@ -335,7 +335,7 @@ impl VirtioBlkBuilder {
         if regs.version() != VIRTIO_VERSION {
             return Err(Error::BadVersion);
         }
-        assert!(regs.device_id() == 2);
+        assert!(regs.device_id() == DeviceId::Block as u32);
 
         regs.reset();
         data_sync();
@@ -415,7 +415,8 @@ impl VirtioBlk {
         let next = descriptor.next;
         let descriptor = queue.descriptor_at(next);
         let addr = descriptor.addr;
-        let addr = addr.into_virt();
+        let _addr = addr.into_virt();
+        // TODO wakeup perocesses sleeping on addr of the descriptor
     }
 }
 

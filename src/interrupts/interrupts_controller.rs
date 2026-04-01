@@ -72,6 +72,6 @@ extern "C" fn irq_handler(reg_set: *mut RegSet) {
     });
 }
 
-fn default_isr(int_num: u32, reg_set: &mut RegSet) {
+fn default_isr(int_num: u32, _reg_set: &mut RegSet) {
     crate::console::println!("irq number #{}!", int_num);
 }

@@ -4,7 +4,7 @@ use crate::interrupts::Interrupt as RawInterrupt;
 #[derive(Copy, Clone, Debug)]
 pub struct Interrupt {
     pub interrupt: RawInterrupt,
-    pub flags: u16,
+    _flags: u16,
 }
 
 pub(super) struct InterruptIterator<'a> {
@@ -29,10 +29,10 @@ impl<'a> Iterator for InterruptIterator<'a> {
             1 => RawInterrupt::Ppi(number as u8),
             other => return Some(Err(FdtParseError::UnknownInterruptType(other))),
         };
-        let flags: u16 = match flags.try_into() {
+        let _flags: u16 = match flags.try_into() {
             Ok(flags) => flags,
             Err(_) => return Some(Err(FdtParseError::InvalidInterruptFlags(flags))),
         };
-        Some(Ok(Interrupt { interrupt, flags }))
+        Some(Ok(Interrupt { interrupt, _flags }))
     }
 }

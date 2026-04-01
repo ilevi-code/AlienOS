@@ -20,6 +20,7 @@ impl<T> StepRange<T> {
     }
 }
 
+#[allow(unused)]
 impl<T: AlignUp + AlignDown + Copy> StepRange<T> {
     pub fn align_from(range: Range<T>, step: T) -> Self {
         Self {

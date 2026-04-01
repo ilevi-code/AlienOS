@@ -19,7 +19,7 @@ pub enum State {
     Zombie,
 }
 
-pub struct PageTable(pub usize);
+pub struct PageTable(#[allow(unused)] pub usize);
 
 #[repr(align(4096))]
 pub struct KernelStack(#[allow(unused)] pub [u8; PAGE_SIZE]);

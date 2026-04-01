@@ -19,6 +19,7 @@ pub(super) struct AddrParts {
 }
 
 impl AddrParts {
+    #[allow(unused)]
     pub(super) fn section_offset(&self) -> usize {
         (self.l2_index() << 12) + self.page_offset()
     }

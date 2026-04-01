@@ -79,6 +79,7 @@ impl<'a> TranslationTable<'a> {
         self.table.0.as_ptr() as usize
     }
 
+    #[allow(unused)]
     pub fn map_sections(
         &mut self,
         virt: usize,
@@ -173,6 +174,7 @@ impl<'a> TranslationTable<'a> {
         }
     }
 
+    #[allow(unused)]
     pub fn apply_kernel(self) {
         crate::arch::set_ttbr1(self.table.0.as_ptr() as usize);
     }
@@ -233,6 +235,7 @@ impl<'a> TranslationTable<'a> {
         Some(Offset(parts.addr()))
     }
 
+    #[allow(unused)]
     pub fn unmap(&mut self, range: Range<usize>) {
         const SECTION_SIZE: usize = size_of::<Section>();
         let range = StepRange::align_from(range, SECTION_SIZE);

@@ -1,5 +1,6 @@
 use core::arch::asm;
 
+#[allow(unused)]
 pub fn get_ttbr0() -> usize {
     let table;
     unsafe {
@@ -36,6 +37,7 @@ pub fn get_cpsr() -> usize {
     value
 }
 
+#[allow(unused)]
 pub enum PeMode {
     User = 0b10000,
     Fiq = 0b10001,

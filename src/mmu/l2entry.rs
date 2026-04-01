@@ -46,6 +46,7 @@ impl L2Entry {
         }
     }
 
+    #[allow(unused)]
     #[inline]
     pub fn get_phys(&self) -> Option<usize> {
         let mask = match self.get_type() {

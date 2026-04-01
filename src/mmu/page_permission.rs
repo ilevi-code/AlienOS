@@ -3,6 +3,7 @@ pub enum PagePerm {
     NoOne,
     KernOnly,
     UserRo,
+    #[allow(unused)]
     UserRw,
 }
 
