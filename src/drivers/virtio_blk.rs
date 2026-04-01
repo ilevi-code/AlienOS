@@ -211,9 +211,10 @@ pub mod regs {
 
     use static_assertions::const_assert;
     const_assert!(core::mem::offset_of!(VirtioRegs, queue_notify) == 0x50);
+    const_assert!(core::mem::size_of::<VirtioRegs>() == 0x100);
 
     impl VirtioRegs {
-        fn config_mut<Config>(&mut self) -> &mut Config {
+        pub fn config_mut<Config>(&mut self) -> &mut Config {
             let addr = self as *mut Self;
             let config_ptr = unsafe { addr.add(1) } as *mut Config;
             unsafe { &mut *config_ptr }
@@ -357,12 +358,7 @@ impl VirtioBlkBuilder {
             return Err(Error::FeatureNegotiationFailed);
         }
 
-        let config = unsafe {
-            regs.as_ptr()
-                .byte_add(0x100)
-                .cast::<block::VirtioBlkConfig>()
-        };
-        let config = unsafe { config.as_ref() }.unwrap();
+        let config = regs.config_mut::<block::VirtioBlkConfig>();
         crate::console::println!("disk contains {:x} sectors", config.capacity_low());
 
         // fill the blk-config
