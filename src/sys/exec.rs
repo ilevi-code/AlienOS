@@ -1,15 +1,16 @@
 use core::slice;
 
 use crate::{
-    alloc::{Arc, Box},
+    alloc::{Arc, Box, Vec},
     error::{Error, Result},
-    fs::{File, FileSystem, Path},
+    fs::{File, FileSystem, Path, SeekFrom},
     interrupts::RegSet,
     println,
     sched::with_current,
     sys::{
-        AsUserBytes, ElfHeader, SyscallResult, User, ELF_IDENT_CLASS32, ELF_IDENT_DATA_2LSB,
-        ELF_IDENT_MAGIC, ELF_MACHINE_ARM, ELF_TYPE_EXEC, ELF_VERSION_CURRENT,
+        AsUserBytes, ElfHeader, ProgramHeader, SyscallResult, User, ELF_IDENT_CLASS32,
+        ELF_IDENT_DATA_2LSB, ELF_IDENT_MAGIC, ELF_MACHINE_ARM, ELF_SEGMENT_TYPE_LOAD,
+        ELF_TYPE_EXEC, ELF_VERSION_CURRENT,
     },
     syscall,
 };
@@ -39,6 +40,8 @@ fn exec_load(mut elf: Box<dyn File>) -> Result<()> {
         || header.elf_type != ELF_TYPE_EXEC
         || header.machine != ELF_MACHINE_ARM
         || header.version != ELF_VERSION_CURRENT
+        || header.elf_header_size as usize != size_of::<ElfHeader>()
+        || header.program_header_entry_size as usize != size_of::<ProgramHeader>()
     {
         with_current(|current| {
             if current.pid == 1 {
@@ -47,6 +50,14 @@ fn exec_load(mut elf: Box<dyn File>) -> Result<()> {
         })?;
         return Err(Error::BadElf);
     }
-    println!("{header:x?}");
+    let mut program_headers = Vec::<ProgramHeader>::new();
+    program_headers.resize(header.program_header_num as usize, ProgramHeader::default())?;
+    elf.seek(SeekFrom::Start(header.program_headers_offset as usize))?;
+    elf.read(program_headers[..].as_user_bytes())?;
+    for program_header in &program_headers {
+        if program_header.segment_type == ELF_SEGMENT_TYPE_LOAD {
+            println!("{:x?}", program_header);
+        }
+    }
     todo!();
 }
