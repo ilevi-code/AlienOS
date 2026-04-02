@@ -12,7 +12,7 @@ ifneq ($(QEMU_DEBUG),)
 QEMU_FLAGS := -S -s
 endif
 
-.PHONY: clean
+.PHONY: clean init
 
 qemu: kernel.bin | fs.img
 	qemu-system-arm -m 512M -M virt $(QEMU_FLAGS) -semihosting -nographic -kernel kernel.bin \
@@ -35,7 +35,12 @@ boot.elf: boot.o bootstrap_mmu.o mmu.o
 clean:
 	$(RM)  *.bin *.elf *.o
 
-fs.img:
+fs.img: init
 	touch $@
-	truncate -s 1024 $@
+	truncate -s 1M $@
+	echo y | mkfs.ext2 -I 128 -t small -O ^sparse_super,^large_file,^resize_inode,^dir_index,^ext_attr fs.img
+	e2mkdir fs.img:/sbin
+	e2cp init/target/armv7a-none-eabi/release/init fs.img:/sbin/init
 
+init:
+	cd init && cargo build --release
