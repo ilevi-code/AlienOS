@@ -3,6 +3,32 @@
 version = 4
 
 [[package]]
+name = "alien-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
+]
+
+[[package]]
+name = "alien-traits"
+version = "0.1.0"
+
+[[package]]
+name = "alienos"
+version = "0.1.0"
+dependencies = [
+ "alien-derive",
+ "alien-traits",
+ "atomic_enum",
+ "cc",
+ "paste",
+ "static_assertions",
+ "thiserror-no-std",
+]
+
+[[package]]
 name = "atomic_enum"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11,17 +37,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.87",
-]
-
-[[package]]
-name = "baremetal"
-version = "0.1.0"
-dependencies = [
- "atomic_enum",
- "cc",
- "paste",
- "static_assertions",
- "thiserror-no-std",
 ]
 
 [[package]]
