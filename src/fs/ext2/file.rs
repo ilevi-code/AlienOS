@@ -87,7 +87,10 @@ impl File for Ext2File {
             self.fs.read_block_into(block_num, &mut block)?;
             let copy_length =
                 core::cmp::min(block.len() - offset.in_block as usize, user_buf.len());
-            copy_to_user(&mut user_buf[..copy_length], &block[..])?;
+            copy_to_user(
+                &mut user_buf[..copy_length],
+                &block[offset.in_block as usize..],
+            )?;
 
             user_buf = &mut user_buf[copy_length..];
             self.file_offset += copy_length;
