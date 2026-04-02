@@ -160,9 +160,9 @@ pub fn wakeup(chan: usize) {
 
 fn wakeup_irq_disabled(chan: usize) {
     let guard = PROCCESSES.lock();
-    for i in 0..guard.len() {
-        if guard[i].chan.load(Ordering::Acquire) == chan {
-            let _ = guard[i].state.compare_exchange(
+    for proccess in &*guard {
+        if proccess.chan.load(Ordering::Acquire) == chan {
+            let _ = proccess.state.compare_exchange(
                 State::Sleeping,
                 State::Runnable,
                 Ordering::Acquire,

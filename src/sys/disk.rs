@@ -36,9 +36,9 @@ fn disk_isr(int_num: u32, _reg_set: &mut RegSet) {
 
 fn find_disk_by_intterrupt(interrupt: u32) -> Option<Arc<dyn Device>> {
     let guard = DISKS.lock();
-    for i in 0..guard.len() {
-        if guard[i].0 == interrupt {
-            return Some(Arc::<dyn Device>::clone(&guard[i].1));
+    for (curr_interrupt, disk) in &*guard {
+        if *curr_interrupt == interrupt {
+            return Some(Arc::<dyn Device>::clone(disk));
         }
     }
     None

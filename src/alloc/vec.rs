@@ -2,7 +2,7 @@ use crate::error::Error;
 use crate::{error::Result, heap::ALLOCATOR};
 use core::alloc::{GlobalAlloc, Layout};
 use core::ops::{Index, IndexMut};
-use core::slice::SliceIndex;
+use core::slice::{Iter, SliceIndex};
 use core::{ptr, slice};
 
 pub(crate) struct Vec<T> {
@@ -169,5 +169,15 @@ impl<T, I: SliceIndex<[T]>> IndexMut<I> for Vec<T> {
     fn index_mut(&mut self, index: I) -> &mut Self::Output {
         let slice = unsafe { slice::from_raw_parts_mut(self.buf, self.length) };
         IndexMut::index_mut(slice, index)
+    }
+}
+
+impl<'a, T> IntoIterator for &'a Vec<T> {
+    type Item = &'a T;
+
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self[..].iter()
     }
 }
