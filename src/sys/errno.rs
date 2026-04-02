@@ -10,11 +10,13 @@ pub enum Errno {
     NoEntry,
     IsADir,
     NotExecutable,
+    InvalidOffset,
 }
 
 impl From<crate::error::Error> for Errno {
     fn from(value: crate::error::Error) -> Self {
         match value {
+            Error::InvalidOffset => Errno::InvalidOffset,
             Error::BadElf => Errno::NotExecutable,
             Error::OutOfMem => Errno::OutOfMem,
             Error::MemoryFault => Errno::Fault,

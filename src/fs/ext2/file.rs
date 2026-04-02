@@ -1,9 +1,9 @@
 use crate::{
     alloc::{Arc, Box, Vec},
-    error::Result,
+    error::{Error, Result},
     fs::{
         ext2::{consts::INDIRECT_BLOCK_INDEX, ext2::Ext2, inode::Inode},
-        File,
+        File, SeekFrom,
     },
     sys::{copy_to_user, User},
 };
@@ -95,6 +95,18 @@ impl File for Ext2File {
             user_buf = &mut user_buf[copy_length..];
             self.file_offset += copy_length;
         }
+        Ok(())
+    }
+
+    fn seek(&mut self, position: crate::fs::file::SeekFrom) -> Result<()> {
+        let new_offset = match position {
+            SeekFrom::Start(offset) => offset,
+            SeekFrom::Current(addition) => self.file_offset.saturating_add(addition),
+        };
+        if new_offset > self.inode.size as usize {
+            return Err(Error::InvalidOffset);
+        }
+        self.file_offset = new_offset;
         Ok(())
     }
 }

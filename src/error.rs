@@ -29,6 +29,8 @@ pub(crate) enum Error {
     IsADir,
     #[error("Bad ELF")]
     BadElf,
+    #[error("Invalid offset")]
+    InvalidOffset,
 }
 
 pub(super) type Result<T> = core::result::Result<T, Error>;
