@@ -18,6 +18,7 @@ mod arch;
 mod console;
 mod device_tree;
 mod drivers;
+mod entry;
 mod error;
 mod fs;
 mod gic;
