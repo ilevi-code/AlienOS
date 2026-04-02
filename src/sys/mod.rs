@@ -6,7 +6,7 @@ mod exec;
 mod mount;
 mod syscall;
 
-pub use copy_user::{copy_from_user, copy_to_user, User};
+pub use copy_user::{copy_from_user, copy_to_user, AsUserBytes, User};
 pub use disk::register_disk;
 pub use elf::{
     ElfHeader, ELF_IDENT_CLASS32, ELF_IDENT_DATA_2LSB, ELF_IDENT_MAGIC, ELF_MACHINE_ARM,

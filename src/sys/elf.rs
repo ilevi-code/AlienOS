@@ -1,4 +1,7 @@
-#[derive(Default, Debug)]
+use alien_derive::Pod;
+use alien_traits::Pod;
+
+#[derive(Default, Debug, Pod)]
 #[repr(C)]
 pub struct ElfIdentifier {
     pub magic: [u8; 4],
@@ -10,7 +13,7 @@ pub struct ElfIdentifier {
     _padding: [u8; 7],
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Pod)]
 #[repr(C)]
 pub struct ElfHeader {
     pub ident: ElfIdentifier,

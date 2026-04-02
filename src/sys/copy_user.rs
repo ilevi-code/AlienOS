@@ -1,4 +1,5 @@
 use crate::error::{Error, Result};
+use alien_traits::Pod;
 use core::{arch::global_asm, cmp::min};
 
 pub struct User<T>(T);
@@ -131,5 +132,20 @@ mod tests {
         let src = [0_u8; 10];
         let mut dest = [User::<u8>(0); 10];
         assert_eq!(copy_to_user(&mut dest, &src), Ok(()));
+    }
+}
+
+pub trait AsUserBytes {
+    fn as_user_bytes(&mut self) -> &mut [User<u8>];
+}
+
+impl<T: ?Sized + Pod> AsUserBytes for T {
+    fn as_user_bytes(&mut self) -> &mut [User<u8>] {
+        unsafe {
+            core::slice::from_raw_parts_mut(
+                core::ptr::from_mut(self) as *mut User<u8>,
+                core::mem::size_of_val(self),
+            )
+        }
     }
 }

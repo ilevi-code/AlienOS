@@ -3,13 +3,13 @@ use core::slice;
 use crate::{
     alloc::{Arc, Box},
     error::{Error, Result},
-    fs::{read_into, File, FileSystem, Path},
+    fs::{File, FileSystem, Path},
     interrupts::RegSet,
     println,
     sched::with_current,
     sys::{
-        ElfHeader, SyscallResult, User, ELF_IDENT_CLASS32, ELF_IDENT_DATA_2LSB, ELF_IDENT_MAGIC,
-        ELF_MACHINE_ARM, ELF_TYPE_EXEC, ELF_VERSION_CURRENT,
+        AsUserBytes, ElfHeader, SyscallResult, User, ELF_IDENT_CLASS32, ELF_IDENT_DATA_2LSB,
+        ELF_IDENT_MAGIC, ELF_MACHINE_ARM, ELF_TYPE_EXEC, ELF_VERSION_CURRENT,
     },
     syscall,
 };
@@ -31,7 +31,7 @@ fn exec(regs: &mut RegSet) -> SyscallResult {
 
 fn exec_load(mut elf: Box<dyn File>) -> Result<()> {
     let mut header = ElfHeader::default();
-    read_into(&mut *elf, &mut header)?;
+    elf.read(header.as_user_bytes())?;
     if header.ident.magic != ELF_IDENT_MAGIC
         || header.ident.class != ELF_IDENT_CLASS32
         || header.ident.data != ELF_IDENT_DATA_2LSB
