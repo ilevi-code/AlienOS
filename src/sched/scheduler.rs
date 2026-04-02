@@ -10,10 +10,10 @@ use crate::{
     error::{Error, Result},
     heap,
     interrupts::{irq_state_save, without_irq},
-    mmu::{AddressSpace, Page, PagePerm, TranslationTable},
+    mmu::{Page, PagePerm},
     per_cpu,
     phys::Phys,
-    sched::proc::{PageTable, Process, StackPointer, State},
+    sched::proc::{Process, StackPointer, State},
     spinlock::SpinLock,
 };
 
@@ -91,14 +91,14 @@ pub fn setup_init_proc() -> Result<()> {
     let pid = NEXT_PID.fetch_add(1, Ordering::Relaxed);
     let mut init = Process::with_pid(pid)?;
 
-    let mut mappings = TranslationTable::new(AddressSpace::User)?;
-    let mapped_code = mappings.map_memory(Phys::from_virt(get_init_code()), PagePerm::UserRo)?;
-    init.page_table = PageTable(mappings.get_base());
-    mappings.apply_user();
+    let mapped_code = init
+        .page_table
+        .map_memory(Phys::from_virt(get_init_code()), PagePerm::UserRo)?;
 
     let stack = heap::alloc::<Page>()?;
-    let mapped_stack =
-        mappings.map_memory(Phys::from_virt(Page::as_slice_ptr(stack)), PagePerm::UserRo)?;
+    let mapped_stack = init
+        .page_table
+        .map_memory(Phys::from_virt(Page::as_slice_ptr(stack)), PagePerm::UserRo)?;
 
     let mut stack = StackPointer::from_slice(&mut init.kern_stack.0);
     let rfe_stack = stack.alloc_frame::<ReturnFromExceptionStack>()?;
@@ -122,6 +122,7 @@ pub fn sched() -> ! {
         let proc = find_runnable_proc();
         CURRENT.replace(Some(NonNull::from_ref(&*proc)));
         let sched_stack = SCHED_STACK.as_ptr();
+        proc.page_table.apply_user();
         without_irq(|| {
             irq_state_save(|| unsafe {
                 stack_switch_unchecked(sched_stack, proc.sp);

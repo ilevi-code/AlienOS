@@ -4,7 +4,7 @@ use crate::{
     alloc::{Arc, Box, Vec},
     error::{Error, Result},
     fs::{File, FileSystem, NullFs},
-    mmu::PAGE_SIZE,
+    mmu::{PageTable, PAGE_SIZE},
     spinlock::SpinLock,
 };
 
@@ -18,8 +18,6 @@ pub enum State {
     Running,
     Zombie,
 }
-
-pub struct PageTable(#[allow(unused)] pub usize);
 
 #[repr(align(4096))]
 pub struct KernelStack(#[allow(unused)] pub [u8; PAGE_SIZE]);
@@ -81,7 +79,7 @@ impl Process {
     pub fn with_pid(pid: u32) -> Result<Self> {
         Ok(Self {
             pid,
-            page_table: PageTable(0),
+            page_table: PageTable::new()?,
             kern_stack: Box::<KernelStack>::zeroed()?,
             sp: null_mut(),
             fd: SpinLock::new(Vec::new()),

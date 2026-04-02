@@ -14,7 +14,7 @@ pub(super) struct Entry {
 }
 
 #[repr(align(1024))]
-pub(super) struct SeconLevelTable([L2Entry; L2_ENTRY_COUNT]);
+pub(super) struct SeconLevelTable(pub [L2Entry; L2_ENTRY_COUNT]);
 
 impl<I: SliceIndex<[L2Entry]>> Index<I> for SeconLevelTable {
     type Output = I::Output;
@@ -114,6 +114,7 @@ impl Entry {
             | Self::SECOND_LEVEL_TABLE_MAGIC;
     }
 
+    #[inline]
     pub fn unmap(&mut self) {
         self.value = 0;
     }

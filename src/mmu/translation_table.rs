@@ -2,6 +2,7 @@ use core::mem::size_of;
 use core::ops::Range;
 use core::ptr::NonNull;
 
+use crate::alloc::Box;
 use crate::console::println;
 use crate::error::{Error, Result};
 use crate::heap;
@@ -21,6 +22,7 @@ const L1_ENTRY_COUNT: usize = 2096;
 #[repr(align(8192))]
 struct L1Table([Entry; L1_ENTRY_COUNT]);
 
+#[derive(PartialEq, Clone, Copy)]
 pub enum AddressSpace {
     Kernel,
     User,
@@ -66,17 +68,6 @@ impl<'a> TranslationTable<'a> {
             AddressSpace::User => 0x0000_0000,
         };
         address_range_base + offset.0
-    }
-
-    pub fn new(address_space: AddressSpace) -> Result<Self> {
-        Ok(Self {
-            table: unsafe { heap::alloc::<L1Table>()?.as_mut().unwrap() },
-            address_space,
-        })
-    }
-
-    pub fn get_base(&self) -> usize {
-        self.table.0.as_ptr() as usize
     }
 
     #[allow(unused)]
@@ -179,10 +170,6 @@ impl<'a> TranslationTable<'a> {
         crate::arch::set_ttbr1(self.table.0.as_ptr() as usize);
     }
 
-    pub fn apply_user(&self) {
-        crate::arch::set_ttbr0(Phys::from_virt(self.table.0.as_ptr()).addr());
-    }
-
     fn seek_hole(&self, offset: Offset) -> Result<Offset> {
         let offset = Offset(offset.0.align_down(PAGE_SIZE));
         let mut parts = AddrParts::from(offset);
@@ -235,23 +222,39 @@ impl<'a> TranslationTable<'a> {
         Some(Offset(parts.addr()))
     }
 
-    #[allow(unused)]
-    pub fn unmap(&mut self, range: Range<usize>) {
-        const SECTION_SIZE: usize = size_of::<Section>();
-        let range = StepRange::align_from(range, SECTION_SIZE);
-        for addr in range {
-            let Ok(offset) = self.get_offset(addr) else {
-                return;
-            };
-            let parts = AddrParts::from(offset);
-            let entry = &mut self.table.0[parts.l1_index()];
-            match entry.get_type() {
-                EntryKind::Unmapped => (),
-                EntryKind::Section(_) => entry.unmap(),
-                EntryKind::SeconLevelTable(_) => unimplemented!(),
+    fn unmap_all(&mut self) {
+        if self.address_space == AddressSpace::Kernel {
+            panic!("Refusing to unmap the kernel");
+        }
+        for entry in &mut self.table.0 {
+            match entry.get_type_mut() {
+                EntryKindMut::Unmapped => (),
+                EntryKindMut::Section(_) => todo!(),
+                EntryKindMut::SeconLevelTable(l2_table) => {
+                    Self::unmap_second_level(l2_table);
+                    entry.unmap();
+                }
                 _ => panic!("Unsupported entry type"),
             }
         }
+    }
+
+    fn unmap_second_level(l2_table: PhysMut<SeconLevelTable>) {
+        let table_ptr = l2_table.into_virt();
+        let l2_table = unsafe { &mut *table_ptr };
+        for entry in &mut l2_table.0 {
+            let phys = match entry.get_type() {
+                L2EntryType::Unmapped => None,
+                L2EntryType::Small => entry.get_phys(),
+                L2EntryType::Large => todo!(),
+            };
+            let Some(phys) = phys else {
+                continue;
+            };
+            heap::dealloc(PhysMut::<crate::mmu::Page>::from(phys).into_virt());
+            entry.unmap()
+        }
+        heap::dealloc(table_ptr);
     }
 
     pub fn map_device<T>(&mut self, device: Phys<T>) -> Result<NonNull<T>> {
@@ -319,5 +322,38 @@ impl<'a> TranslationTable<'a> {
             }
         }
         Ok(start)
+    }
+}
+
+pub struct PageTable {
+    table: Box<L1Table>,
+}
+
+impl PageTable {
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            table: Box::<L1Table>::zeroed()?,
+        })
+    }
+
+    pub fn apply_user(&self) {
+        crate::arch::set_ttbr0(Phys::from_virt(self.table.0.as_ptr()).addr());
+    }
+
+    pub fn map_memory(&mut self, phys: Phys<[u8]>, perm: PagePerm) -> Result<&'static [u8]> {
+        self.as_translation_table().map_memory(phys, perm)
+    }
+
+    pub fn as_translation_table(&mut self) -> TranslationTable<'_> {
+        TranslationTable {
+            table: &mut self.table,
+            address_space: AddressSpace::User,
+        }
+    }
+}
+
+impl Drop for PageTable {
+    fn drop(&mut self) {
+        self.as_translation_table().unmap_all();
     }
 }

@@ -63,3 +63,12 @@ pub fn alloc<T>() -> Result<*mut T> {
     }
     Ok(ptr)
 }
+
+pub fn dealloc<T>(ptr: *mut T) {
+    ALLOCATOR
+        .0
+        .lock()
+        .as_mut()
+        .expect("Heap should be initlized before alloc")
+        .dealloc(ptr as *mut u8, Layout::new::<T>());
+}

@@ -46,7 +46,6 @@ impl L2Entry {
         }
     }
 
-    #[allow(unused)]
     #[inline]
     pub fn get_phys(&self) -> Option<usize> {
         let mask = match self.get_type() {
@@ -69,6 +68,11 @@ impl L2Entry {
     #[inline]
     pub(super) fn set_perm(&mut self, perm: PagePerm) {
         self.value |= perm.translate() << Self::PAGE_PERM_SHIFT;
+    }
+
+    #[inline]
+    pub fn unmap(&mut self) {
+        self.value = 0;
     }
 }
 
