@@ -6,7 +6,7 @@ OBJCOPY := $(TOOLCHAIN)objcopy
 ASFLAGS := -g -march=armv7-a
 CFLAGS := -g -nostdlib -nostdinc -march=armv7-a
 
-KERNEL ?= target/armv7a-none-eabi/debug/baremetal
+KERNEL ?= target/armv7a-none-eabi/debug/alienos
 
 ifneq ($(QEMU_DEBUG),)
 QEMU_FLAGS := -S -s

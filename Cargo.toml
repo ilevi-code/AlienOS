@@ -1,5 +1,5 @@
 [package]
-name = "baremetal"
+name = "alienos"
 version = "0.1.0"
 edition = "2021"
 
