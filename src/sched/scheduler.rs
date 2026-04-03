@@ -95,25 +95,30 @@ pub fn setup_init_proc() -> Result<()> {
         .page_table
         .map_memory(Phys::from_virt(get_init_code()), PagePerm::UserRo)?;
 
-    let stack = heap::alloc::<Page>()?;
-    let mapped_stack = init
-        .page_table
-        .map_memory(Phys::from_virt(Page::as_slice_ptr(stack)), PagePerm::UserRo)?;
+    setup_proc_stack(&mut init, mapped_code.as_ptr().addr())?;
+    let init = Arc::new(init)?;
 
-    let mut stack = StackPointer::from_slice(&mut init.kern_stack.0);
+    PROCCESSES.lock().push(init)?;
+    Ok(())
+}
+
+pub fn setup_proc_stack(proc: &mut Process, entrypoint: usize) -> Result<()> {
+    let stack = heap::alloc::<Page>()?;
+    let mapped_stack = proc
+        .page_table
+        .map_memory(Phys::from_virt(Page::as_slice_ptr(stack)), PagePerm::UserRw)?;
+
+    let mut stack = StackPointer::from_slice(&mut proc.kern_stack.0);
     let rfe_stack = stack.alloc_frame::<ReturnFromExceptionStack>()?;
     rfe_stack.cspr = PeMode::User as usize;
     rfe_stack.sp = mapped_stack.as_ptr().addr() + size_of::<Page>();
-    rfe_stack.pc = mapped_code.as_ptr().addr();
+    rfe_stack.pc = entrypoint;
     let switch_frame = stack.alloc_frame::<SwitchFrame>()?;
     switch_frame.regs = [0; 11];
     switch_frame.pc = return_to_user_mode as *const () as usize;
     switch_frame.cspr = arch::get_cpsr();
 
-    init.sp = stack.into_sp();
-    let init = Arc::new(init)?;
-
-    PROCCESSES.lock().push(init)?;
+    proc.sp = stack.into_sp();
     Ok(())
 }
 
