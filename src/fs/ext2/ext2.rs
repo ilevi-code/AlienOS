@@ -111,12 +111,13 @@ impl Ext2 {
         }
         let mut inode = self.read_inode(ROOT_INODE)?;
         let mut is_dir = true;
+        let max_block_index = inode.blocks as usize * SECTOR_SIZE / self.block_size();
         for component in Components::new(&path.bytes) {
             let mut next = None;
             for block_num in inode
                 .block
                 .iter()
-                .take(core::cmp::min(DIRECT_BLOCK_COUNT, inode.blocks as usize))
+                .take(core::cmp::min(DIRECT_BLOCK_COUNT, max_block_index))
             {
                 if !is_dir {
                     return Err(Error::NotADir);
