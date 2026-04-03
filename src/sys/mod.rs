@@ -3,6 +3,7 @@ mod disk;
 mod elf;
 mod errno;
 mod exec;
+mod exit;
 mod mount;
 mod syscall;
 

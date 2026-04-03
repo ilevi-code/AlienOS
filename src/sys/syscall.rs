@@ -18,6 +18,7 @@ pub struct Syscall {
 pub enum SyscallNumber {
     Exec = 0,
     Mount = 1,
+    Exit = 2,
 }
 
 #[macro_export]

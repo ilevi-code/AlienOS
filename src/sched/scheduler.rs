@@ -55,6 +55,10 @@ global_asm!(
     "mov r2, sp",
     // exec("/sbin/init", null)
     "svc #0",
+    "mov r1, 1",
+    "mov r0, 2",
+    // exit(1)
+    "svc #0",
     ".global init_code_end",
     "init_code_end:",
 );
