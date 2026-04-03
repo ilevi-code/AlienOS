@@ -79,9 +79,9 @@ fn svc_handler(regs: *mut RegSet) {
             guard[regs.r[0]]
         }
     };
+    regs.lr += 4;
     regs.r[0] = match syscall(regs) {
         Ok(return_value) => return_value,
         Err(error) => error as usize,
     };
-    regs.lr += 4;
 }

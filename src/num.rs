@@ -39,7 +39,6 @@ where
     }
 }
 
-#[allow(unused)]
 pub trait AlignUp {
     fn align_up(self, align: Self) -> Self;
 }

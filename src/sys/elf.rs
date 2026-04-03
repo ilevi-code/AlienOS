@@ -20,7 +20,7 @@ pub struct ElfHeader {
     pub elf_type: u16,
     pub machine: u16,
     pub version: u32,
-    entry: u32,
+    pub entry: u32,
     pub program_headers_offset: u32,
     section_headers_offset: u32,
     flags: u32,
@@ -38,11 +38,11 @@ static_assertions::const_assert!(core::mem::size_of::<ElfHeader>() == 52);
 #[repr(C)]
 pub struct ProgramHeader {
     pub segment_type: u32,
-    file_offset: u32,
-    virt_addr: u32,
+    pub file_offset: u32,
+    pub virt_addr: u32,
     _phys_addr: u32,
-    file_size: u32,
-    mem_size: u32,
+    pub file_size: u32,
+    pub mem_size: u32,
     flags: u32,
     align: u32,
 }
