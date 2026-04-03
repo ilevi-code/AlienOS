@@ -5,8 +5,6 @@ use crate::mmu::l2entry::L2Entry;
 use crate::mmu::PagePerm;
 use crate::phys::{Phys, PhysMut};
 
-#[allow(unused)]
-const L1_ENTRY_COUNT: usize = 4096;
 const L2_ENTRY_COUNT: usize = 256;
 
 pub(super) struct Entry {

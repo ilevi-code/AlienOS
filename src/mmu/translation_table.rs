@@ -20,7 +20,7 @@ use super::PAGE_SIZE;
 const L1_ENTRY_COUNT: usize = 2096;
 
 #[repr(align(8192))]
-struct L1Table([Entry; L1_ENTRY_COUNT]);
+pub(super) struct L1Table(pub(super) [Entry; L1_ENTRY_COUNT]);
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum AddressSpace {
@@ -34,6 +34,12 @@ pub struct TranslationTable<'a> {
 }
 
 impl<'a> TranslationTable<'a> {
+    pub(super) fn new(table: &'a mut L1Table, address_space: AddressSpace) -> TranslationTable<'a> {
+        Self {
+            table,
+            address_space,
+        }
+    }
     pub fn get_kernel() -> Self {
         let base: PhysMut<L1Table> = (crate::arch::get_ttbr1() as *mut L1Table).into();
         Self {
@@ -96,7 +102,7 @@ impl<'a> TranslationTable<'a> {
         Ok(())
     }
 
-    fn map(
+    pub(super) fn map(
         &mut self,
         virt: usize,
         phys: usize,
@@ -222,7 +228,7 @@ impl<'a> TranslationTable<'a> {
         Some(Offset(parts.addr()))
     }
 
-    fn unmap_all(&mut self) {
+    pub(super) fn unmap_all(&mut self) {
         if self.address_space == AddressSpace::Kernel {
             panic!("Refusing to unmap the kernel");
         }
@@ -322,38 +328,5 @@ impl<'a> TranslationTable<'a> {
             }
         }
         Ok(start)
-    }
-}
-
-pub struct PageTable {
-    table: Box<L1Table>,
-}
-
-impl PageTable {
-    pub fn new() -> Result<Self> {
-        Ok(Self {
-            table: Box::<L1Table>::zeroed()?,
-        })
-    }
-
-    pub fn apply_user(&self) {
-        crate::arch::set_ttbr0(Phys::from_virt(self.table.0.as_ptr()).addr());
-    }
-
-    pub fn map_memory(&mut self, phys: Phys<[u8]>, perm: PagePerm) -> Result<&'static [u8]> {
-        self.as_translation_table().map_memory(phys, perm)
-    }
-
-    pub fn as_translation_table(&mut self) -> TranslationTable<'_> {
-        TranslationTable {
-            table: &mut self.table,
-            address_space: AddressSpace::User,
-        }
-    }
-}
-
-impl Drop for PageTable {
-    fn drop(&mut self) {
-        self.as_translation_table().unmap_all();
     }
 }
