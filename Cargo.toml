@@ -22,3 +22,6 @@ static_assertions = "1.1.0"
 thiserror-no-std = "2.0.2"
 alien-traits = { path = "./alien-traits" }
 alien-derive = { path = "./alien-derive" }
+
+[features]
+logging = []

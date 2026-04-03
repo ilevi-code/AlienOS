@@ -2,7 +2,7 @@ use core::mem::size_of;
 use core::ops::Range;
 use core::ptr::NonNull;
 
-use crate::alloc::Box;
+#[cfg(feature = "logging")]
 use crate::console::println;
 use crate::error::{Error, Result};
 use crate::heap;
@@ -114,6 +114,7 @@ impl<'a> TranslationTable<'a> {
         let virt_range = StepRange::new(virt, virt + len, PAGE_SIZE);
         let phys_range = StepRange::new(phys, phys + len, PAGE_SIZE);
 
+        #[cfg(feature = "logging")]
         println!(
             "mapping virt 0x{:x}[0..0x{:x}] to phys 0x{:x}",
             virt, len, phys

@@ -1,11 +1,13 @@
 use core::slice;
 
+#[cfg(feature = "logging")]
+use crate::println;
+
 use crate::{
     alloc::Arc,
     error::Error,
     fs::Ext2,
     interrupts::RegSet,
-    println,
     sched::with_current,
     sys::{SyscallResult, User},
     syscall,
@@ -19,11 +21,14 @@ fn mount(regs: &mut RegSet) -> SyscallResult {
         slice::from_raw_parts(regs.r[2] as *const User<u8>, 4)
     })?;
     let disk_id = regs.r[1];
+
+    #[cfg(feature = "logging")]
     println!(
         "mounting disk {} as {}",
         disk_id,
         str::from_utf8(&dest).unwrap_or("<bad filesystem>")
     );
+
     let disk = crate::sys::disk::get_disk_by_id(disk_id).ok_or(Error::NoDevice)?;
     // TODO actually check the requested filesystem
     let fs = Arc::new(Ext2::new(disk)?)?;

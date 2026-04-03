@@ -1,5 +1,8 @@
 use core::{cmp::min, slice};
 
+#[cfg(feature = "logging")]
+use crate::println;
+
 use crate::{
     alloc::{Arc, Box, Vec},
     drivers::block::SECTOR_SIZE,
@@ -8,7 +11,6 @@ use crate::{
     interrupts::RegSet,
     mmu::{PagePerm, PageTable},
     num::{AlignDown, AlignUp},
-    println,
     sched::with_current,
     sys::{
         AsUserBytes, ElfHeader, ProgramHeader, SyscallResult, User, ELF_IDENT_CLASS32,
@@ -26,7 +28,10 @@ fn exec(regs: &mut RegSet) -> SyscallResult {
         slice::from_raw_parts(regs.r[1] as *const User<u8>, 10)
     })?;
     let path = Path::new(&dest);
+
+    #[cfg(feature = "logging")]
     println!("exec: {path:?}");
+
     let fs = with_current(|current| Arc::clone(&current.fs))?;
     let file = FileSystem::open(Arc::clone(&fs), path)?;
     exec_load(file, regs)?;
