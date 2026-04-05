@@ -1,4 +1,4 @@
-use core::{arch::asm, mem::offset_of};
+use core::{arch::asm, mem::offset_of, ptr};
 
 use crate::{
     alloc::{Box, Unique},
@@ -80,11 +80,11 @@ pub mod virt_queue {
     const_assert!(core::mem::align_of::<VirtQueue>() == 16);
     const_assert!(core::mem::size_of::<VirtQueue>() < 0x4096);
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, PartialEq)]
     pub struct DesctriptorIndex(u16);
 
     impl DesctriptorIndex {
-        pub const LAST: DesctriptorIndex = DesctriptorIndex(0);
+        pub const UNUSED: DesctriptorIndex = DesctriptorIndex(0);
     }
 
     impl VirtQueue {
@@ -92,18 +92,24 @@ pub mod virt_queue {
             let Ok(mut queue) = Box::<VirtQueue>::zeroed() else {
                 return Err(AllocError::OutOfMem);
             };
-            for (i, descriptor) in queue.descriptors.iter_mut().enumerate() {
+            for (i, descriptor) in queue.descriptors.iter_mut().enumerate().skip(1) {
                 descriptor.next = DesctriptorIndex(((i + 1) % VIRT_QUEUE_SIZE) as u16);
             }
+            // 0 is unused
+            queue.free_desc = DesctriptorIndex(1);
             Ok(queue)
         }
 
-        pub fn alloc_descriptor(&mut self) -> DesctriptorIndex {
+        pub fn alloc_descriptor(&mut self) -> Option<DesctriptorIndex> {
             let desc = self.free_desc;
+            if desc == DesctriptorIndex::UNUSED {
+                return None;
+            }
             self.free_desc = self.descriptors[self.free_desc.0 as usize].next;
             self.descriptors[desc.0 as usize].next = DesctriptorIndex(0);
+            debug_assert!(!self.used_bitmap.is_set(desc.0 as usize));
             self.used_bitmap.set(desc.0 as usize);
-            desc
+            Some(desc)
         }
 
         pub fn descriptor_at(&mut self, index: DesctriptorIndex) -> &mut Descriptor {
@@ -136,9 +142,17 @@ pub mod virt_queue {
             while self.last_seen_used != used_index {
                 let used_descriptor_id =
                     self.used.ring[self.last_seen_used as usize % self.used.ring.len()].id;
+                debug_assert!(self.used_bitmap.is_set(used_descriptor_id as usize));
                 self.used_bitmap.unset(used_descriptor_id as usize);
                 self.last_seen_used = self.last_seen_used.wrapping_add(1);
             }
+        }
+
+        pub fn free_descriptor(&mut self, descriptor: DesctriptorIndex) {
+            debug_assert!(descriptor != DesctriptorIndex::UNUSED);
+            self.used_bitmap.unset(descriptor.0 as usize);
+            self.descriptors[descriptor.0 as usize].next = self.free_desc;
+            self.free_desc = descriptor
         }
     }
 }
@@ -344,14 +358,13 @@ pub struct VirtioBlk {
 
 impl VirtioBlkBuilder {
     pub fn new(mut regs: Unique<regs::VirtioRegs>) -> Result<Self, Error> {
-        crate::console::println!("{:?}", regs.as_ptr());
         if regs.magic() != VIRIO_MAGIC {
             return Err(Error::BadMagic);
         }
         if regs.version() != VIRTIO_VERSION {
             return Err(Error::BadVersion);
         }
-        assert!(regs.device_id() == DeviceId::Block as u32);
+        debug_assert!(regs.device_id() == DeviceId::Block as u32);
 
         regs.reset();
         data_sync();
@@ -429,6 +442,80 @@ impl VirtioBlk {
         }
         Ok(())
     }
+
+    fn alloc_request_descriptors(&self) -> Option<RequestDescriptors<'_>> {
+        let mut queue = self.queue.lock();
+        let header = queue.alloc_descriptor()?;
+        let Some(data) = queue.alloc_descriptor() else {
+            queue.free_descriptor(header);
+            return None;
+        };
+        let Some(trailer) = queue.alloc_descriptor() else {
+            queue.free_descriptor(header);
+            queue.free_descriptor(data);
+            return None;
+        };
+        Some(RequestDescriptors {
+            queue: &self.queue,
+            header,
+            data,
+            trailer,
+        })
+    }
+
+    fn submit_request(
+        &self,
+        request: &block::Request,
+        buf: &[u8],
+        descriptors: &RequestDescriptors,
+        data_flags: u16,
+    ) {
+        let mut queue = self.queue.lock();
+
+        let phys = Phys::from_virt(ptr::from_ref(request) as *const u8);
+        {
+            let header_start = queue.descriptor_at(descriptors.header);
+            header_start.addr = phys;
+            // The last byte is the status, and should be in a writable portion of the request
+            header_start.length = size_of::<block::Request>() as u32 - 1;
+            header_start.flags = virt_queue::Flag::Next as u16;
+            header_start.next = descriptors.data;
+        }
+
+        {
+            let data_descriptor = queue.descriptor_at(descriptors.data);
+            data_descriptor.addr = Phys::from_virt(buf.as_ptr());
+            data_descriptor.length = 512;
+            data_descriptor.flags = (virt_queue::Flag::Next as u16) | data_flags;
+            data_descriptor.next = descriptors.trailer;
+        }
+
+        {
+            let header_status = queue.descriptor_at(descriptors.trailer);
+            header_status.addr = unsafe { phys.byte_add(offset_of!(block::Request, status)) };
+            header_status.length = size_of::<u8>() as u32;
+            header_status.flags = virt_queue::Flag::Write as u16;
+            header_status.next = virt_queue::DesctriptorIndex::UNUSED;
+        }
+
+        queue.submit(descriptors.header);
+    }
+}
+
+struct RequestDescriptors<'a> {
+    queue: &'a SpinLock<Box<virt_queue::VirtQueue>>,
+    header: DesctriptorIndex,
+    data: DesctriptorIndex,
+    trailer: DesctriptorIndex,
+}
+
+impl<'a> Drop for RequestDescriptors<'a> {
+    fn drop(&mut self) {
+        let mut queue = self.queue.lock();
+        queue.free_descriptor(self.header);
+        queue.free_descriptor(self.data);
+        queue.free_descriptor(self.trailer);
+    }
 }
 
 impl Device for VirtioBlk {
@@ -444,39 +531,14 @@ impl Device for VirtioBlk {
             status: 0,
         };
 
-        let mut queue = self.queue.lock();
-        let index = queue.alloc_descriptor();
-        let index2 = queue.alloc_descriptor();
-        let index3 = queue.alloc_descriptor();
+        let descriptors = loop {
+            if let Some(descriptors) = self.alloc_request_descriptors() {
+                break descriptors;
+            }
+        };
 
-        let phys = Phys::from_virt(&raw const request as *const u8);
-        {
-            let header_start = queue.descriptor_at(index);
-            header_start.addr = phys;
-            header_start.length = size_of::<block::Request>() as u32 - 1;
-            header_start.flags = virt_queue::Flag::Next as u16;
-            header_start.next = index2;
-        }
+        self.submit_request(&request, buf, &descriptors, virt_queue::Flag::Write as u16);
 
-        {
-            let data_descriptor = queue.descriptor_at(index2);
-            data_descriptor.addr = Phys::from_virt(buf.as_ptr());
-            data_descriptor.length = 512;
-            data_descriptor.flags =
-                (virt_queue::Flag::Write as u16) | (virt_queue::Flag::Next as u16);
-            data_descriptor.next = index3;
-        }
-
-        {
-            let header_status = queue.descriptor_at(index3);
-            header_status.addr = unsafe { phys.byte_add(offset_of!(block::Request, status)) };
-            header_status.length = size_of::<u8>() as u32;
-            header_status.flags = virt_queue::Flag::Write as u16;
-            header_status.next = virt_queue::DesctriptorIndex::LAST;
-        }
-
-        queue.submit(index);
-        drop(queue);
         data_sync();
 
         without_irq(|| {
@@ -484,7 +546,7 @@ impl Device for VirtioBlk {
             unsafe { self.regs.queue_notify.get().write_volatile(0) };
         });
 
-        self.sleep_on_descriptor(index)?;
+        self.sleep_on_descriptor(descriptors.header)?;
 
         Ok(())
     }
@@ -500,38 +562,15 @@ impl Device for VirtioBlk {
             sector: sector as u64,
             status: 0,
         };
-        let mut queue = self.queue.lock();
-        let index = queue.alloc_descriptor();
-        let index2 = queue.alloc_descriptor();
-        let index3 = queue.alloc_descriptor();
 
-        let phys = Phys::from_virt(&raw const request as *const u8);
-        {
-            let header_start = queue.descriptor_at(index);
-            header_start.addr = phys;
-            header_start.length = size_of::<block::Request>() as u32 - 1;
-            header_start.flags = virt_queue::Flag::Next as u16;
-            header_start.next = index2;
-        }
+        let descriptors = loop {
+            if let Some(descriptors) = self.alloc_request_descriptors() {
+                break descriptors;
+            }
+        };
 
-        {
-            let data_descriptor = queue.descriptor_at(index2);
-            data_descriptor.addr = Phys::from_virt(buf.as_ptr());
-            data_descriptor.length = 512;
-            data_descriptor.flags = virt_queue::Flag::Next as u16;
-            data_descriptor.next = index3;
-        }
+        self.submit_request(&request, buf, &descriptors, 0);
 
-        {
-            let header_status = queue.descriptor_at(index3);
-            header_status.addr = unsafe { phys.byte_add(offset_of!(block::Request, status)) };
-            header_status.length = size_of::<u8>() as u32;
-            header_status.flags = virt_queue::Flag::Write as u16;
-            header_status.next = virt_queue::DesctriptorIndex::LAST;
-        }
-
-        queue.submit(index);
-        drop(queue);
         data_sync();
 
         without_irq(|| {
@@ -539,7 +578,7 @@ impl Device for VirtioBlk {
             unsafe { self.regs.queue_notify.get().write_volatile(0) };
         });
 
-        self.sleep_on_descriptor(index)?;
+        self.sleep_on_descriptor(descriptors.header)?;
 
         Ok(())
     }
