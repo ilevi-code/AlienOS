@@ -15,6 +15,7 @@
 
 mod alloc;
 mod arch;
+mod bitmap;
 mod console;
 mod device_tree;
 mod drivers;

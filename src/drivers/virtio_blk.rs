@@ -2,7 +2,7 @@ use core::{arch::asm, mem::offset_of};
 
 use crate::{
     alloc::{Box, Unique},
-    drivers::block::Device,
+    drivers::{block::Device, virtio_blk::virt_queue::DesctriptorIndex},
     interrupts::without_irq,
     phys::Phys,
     sched::sleep_on,
@@ -20,13 +20,14 @@ fn data_sync() {
 pub mod virt_queue {
     use core::ptr::addr_of;
 
-    use crate::{alloc::Box, phys::Phys};
+    use crate::{alloc::Box, bitmap::Bitmap, phys::Phys};
 
     pub enum Flag {
         Next = 1,
         Write = 2,
     }
     pub const VIRT_QUEUE_SIZE: usize = 128;
+    pub const BIT_PER_U32: usize = 32;
 
     #[repr(C, packed)]
     #[derive(Clone, Copy)]
@@ -66,6 +67,8 @@ pub mod virt_queue {
         available: AvailableRing,
         used: UsedRing,
         free_desc: DesctriptorIndex,
+        used_bitmap: [u32; VIRT_QUEUE_SIZE / BIT_PER_U32],
+        last_seen_used: u16,
     }
 
     use static_assertions::const_assert;
@@ -99,6 +102,7 @@ pub mod virt_queue {
             let desc = self.free_desc;
             self.free_desc = self.descriptors[self.free_desc.0 as usize].next;
             self.descriptors[desc.0 as usize].next = DesctriptorIndex(0);
+            self.used_bitmap.set(desc.0 as usize);
             desc
         }
 
@@ -121,9 +125,20 @@ pub mod virt_queue {
             )
         }
 
-        pub fn used_index(&self) -> DesctriptorIndex {
-            let i = (self.used.index as usize) % self.used.ring.len();
-            DesctriptorIndex(self.used.ring[i].id as u16)
+        pub fn is_descriptor_busy(&self, descriptor: DesctriptorIndex) -> bool {
+            let index = descriptor.0 as usize;
+            self.used_bitmap.is_set(index)
+        }
+
+        /// Note: used as in consumed, not "current in use"
+        pub fn check_used_ring_progress(&mut self) {
+            let used_index = unsafe { (&raw mut self.used.index).read_volatile() };
+            while self.last_seen_used != used_index {
+                let used_descriptor_id =
+                    self.used.ring[self.last_seen_used as usize % self.used.ring.len()].id;
+                self.used_bitmap.unset(used_descriptor_id as usize);
+                self.last_seen_used = self.last_seen_used.wrapping_add(1);
+            }
         }
     }
 }
@@ -165,6 +180,7 @@ const DEVICE_STATUS_ACK: u32 = 1;
 const DEVICE_STATUS_DRIVER: u32 = 2;
 const DEVICE_STATUS_DRIVER_OK: u32 = 4;
 const DEVICE_STATUS_FEATURES_OK: u32 = 8;
+
 pub mod regs {
     use core::{
         cell::UnsafeCell,
@@ -401,22 +417,17 @@ impl VirtioBlkBuilder {
 }
 
 impl VirtioBlk {
-    pub fn status(&self) {
-        self.check_used()
-    }
-
-    pub fn check_used(&self) {
-        let mut queue = self.queue.lock();
-        let i = queue.used_index();
-        let descriptor = queue.descriptor_at(i);
-        if descriptor.flags & (virt_queue::Flag::Next as u16) == 0 {
-            crate::console::println!("bad descriptor");
+    fn sleep_on_descriptor(&self, descriptor: DesctriptorIndex) -> crate::error::Result<()> {
+        loop {
+            let descriptor_busy = without_irq(|| -> crate::error::Result<bool> {
+                sleep_on(core::ptr::from_ref(self).addr())?;
+                Ok(self.queue.lock().is_descriptor_busy(descriptor))
+            })?;
+            if !descriptor_busy {
+                break;
+            }
         }
-        let next = descriptor.next;
-        let descriptor = queue.descriptor_at(next);
-        let addr = descriptor.addr;
-        let _addr = addr.into_virt();
-        // TODO wakeup perocesses sleeping on addr of the descriptor
+        Ok(())
     }
 }
 
@@ -468,13 +479,12 @@ impl Device for VirtioBlk {
         drop(queue);
         data_sync();
 
-        without_irq(|| -> crate::error::Result<()> {
+        without_irq(|| {
             // always using queue #0
             unsafe { self.regs.queue_notify.get().write_volatile(0) };
+        });
 
-            sleep_on(core::ptr::from_ref(self).addr())
-            // TODO verify that our request finished, and check it's status, and free allocated indices
-        })?;
+        self.sleep_on_descriptor(index)?;
 
         Ok(())
     }
@@ -524,19 +534,19 @@ impl Device for VirtioBlk {
         drop(queue);
         data_sync();
 
-        without_irq(|| -> crate::error::Result<()> {
+        without_irq(|| {
             // always using queue #0
             unsafe { self.regs.queue_notify.get().write_volatile(0) };
+        });
 
-            sleep_on(core::ptr::from_ref(self).addr())
-            // TODO verify that our request finished, and check it's status, and free allocated indices
-        })?;
+        self.sleep_on_descriptor(index)?;
 
         Ok(())
     }
 
     fn ack_interrupt(&self) {
-        self.status();
+        let mut queue = self.queue.lock();
+        queue.check_used_ring_progress();
         let int_status = self.regs.interrupt_status();
         // Safety:
         // regs are MMIO
