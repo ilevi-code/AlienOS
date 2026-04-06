@@ -31,13 +31,6 @@ impl<T> Arc<T> {
     }
 }
 
-impl<T: ?Sized> Arc<T> {
-    pub fn as_ptr(this: &Self) -> *const T {
-        let inner = unsafe { this.ptr.as_ref() };
-        &raw const inner.data
-    }
-}
-
 unsafe impl<T: Sync + Send + ?Sized> Send for Arc<T> {}
 unsafe impl<T: Sync + Send + ?Sized> Sync for Arc<T> {}
 

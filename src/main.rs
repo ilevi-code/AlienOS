@@ -51,6 +51,7 @@ use mmu::TranslationTable;
 use spinlock::SpinLock;
 
 use crate::alloc::Arc;
+use crate::drivers::pl011::Pl011;
 use crate::interrupts::{register_handler, Interrupt};
 use crate::sys::register_disk;
 use crate::{alloc::Unique, interrupts::InterruptController};
@@ -94,26 +95,20 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
         ));
     });
 
+    let uart: Unique<Pl011Regs> = TranslationTable::get_kernel()
+        .map_device(root.pl011.address)
+        .unwrap()
+        .into();
+    let uart = Arc::new(Pl011::new(uart).unwrap()).unwrap();
+    *SERIAL.lock() = Some(Arc::clone(&uart));
+    register_handler(Arc::<Pl011>::clone(&uart), root.pl011.interrupt.interrupt).unwrap();
+    uart.enable_rx();
+
     #[cfg(test)]
     {
         test_main();
         semihosting::shutdown(0);
     }
-
-    interrupts::without_irq(|| {
-        interrupts::CONTROLLER
-            .lock()
-            .as_mut()
-            .unwrap()
-            .register(root.pl011.interrupt.interrupt, console_isr);
-    });
-    let mut uart: Unique<Pl011Regs> = TranslationTable::get_kernel()
-        .map_device(root.pl011.address)
-        .unwrap()
-        .into();
-    let mask = uart.interrupt_mask() | 1 << 4;
-    uart.set_interrupt_mask(mask);
-    *SERIAL.lock() = uart;
 
     interrupts::without_irq(|| {
         interrupts::CONTROLLER
@@ -152,26 +147,6 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
 
 extern "C" fn run_scheduler() -> ! {
     sched::sched()
-}
-
-fn console_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {
-    let mut data = [0u32; 4];
-    let mut index = 0;
-
-    {
-        let mut uart = SERIAL.lock();
-        while uart.flag() & (1 << 4) == 0 {
-            if index < data.len() {
-                data[index] = uart.data();
-                index += 1;
-            } else {
-                uart.data();
-            }
-        }
-        uart.set_interrupt_clear(1 << 4);
-    }
-
-    console::println!("console: {data:x?}");
 }
 
 fn timer_isr(_int_num: u32, _reg_set: &mut interrupts::RegSet) {

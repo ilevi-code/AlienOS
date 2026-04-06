@@ -1,40 +1,30 @@
-use core::{
-    fmt::{self, Write},
-    ptr::NonNull,
-};
+use core::fmt::{self, Write};
 
 use crate::{
-    alloc::Unique,
+    alloc::Arc,
     console::{
         print_buf::{PrintBuf as GenericPrintBuf, ENTRY_MAX_LENGTH},
         write_buffer::FmtBuffer,
     },
-    drivers::pl011::Pl011Regs,
+    drivers::{pl011::Pl011, CharDev},
     SpinLock,
 };
 
-pub static SERIAL: SpinLock<Unique<Pl011Regs>> = SpinLock::new(Unique::from_non_null(
-    NonNull::new(0x9000000 as *mut Pl011Regs).unwrap(),
-));
+pub static SERIAL: SpinLock<Option<Arc<Pl011>>> = SpinLock::new(None);
 
 type PrintBuf = GenericPrintBuf<1024>;
 
 static PRINT_BUF: SpinLock<PrintBuf> = SpinLock::new(PrintBuf::new());
 
-fn console_write(serial: &mut Pl011Regs, bytes: &[u8]) {
-    for byte in bytes {
-        serial.set_data(*byte as u32);
-    }
-}
-
-fn console_flush_entris(serial: &mut Pl011Regs) {
+fn console_flush_entris(serial: &Pl011) {
     loop {
         let mut line_buf = [0; ENTRY_MAX_LENGTH];
         let n = { PRINT_BUF.lock().pop_into(&mut line_buf) };
         if n == 0 {
             break;
         }
-        console_write(serial, &line_buf[..n]);
+        // On write failure there is nothing for us to do
+        let _ = serial.write(&line_buf[..n]);
     }
 }
 
@@ -51,8 +41,11 @@ pub fn write_args(args: fmt::Arguments, newline: bool) -> Result<(), fmt::Error>
         // If we fail to lock, this means that we are got interrupted while flusing.
         // We have already added submitted the formatted entry, so when we return from this
         // interrupt, we will notice the new entry.
-        if let Some(mut serial) = SERIAL.try_lock() {
-            console_flush_entris(&mut serial);
+        if let Some(serial_guard) = SERIAL.try_lock() {
+            // If there is no serial line, the entries will be flushed a sucecessfull call
+            if let Some(serial) = serial_guard.as_ref() {
+                console_flush_entris(serial);
+            }
         }
     });
     Ok(())
