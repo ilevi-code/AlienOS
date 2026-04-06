@@ -1,6 +1,7 @@
 use core::{
     arch::global_asm,
     ptr::{addr_of_mut, null_mut, NonNull},
+    slice,
     sync::atomic::{AtomicU32, Ordering},
 };
 
@@ -25,9 +26,9 @@ per_cpu!(SCHED_STACK: *mut u8 = null_mut());
 
 global_asm!(
     ".section \".text\", \"ax\"",
-    ".type init_code, \"function\"",
-    ".global init_code",
-    "init_code:",
+    ".type init_code_start, \"function\"",
+    ".global init_code_start",
+    "init_code_start:",
     // push "ext2" to stack
     "movw r0, #0x7865",
     "movt r0, #0x3274",
@@ -64,17 +65,28 @@ global_asm!(
 );
 
 extern "C" {
-    static init_code: u8;
+    static init_code_start: u8;
     static init_code_end: u8;
 }
 
-fn get_init_code() -> *const [u8] {
+fn get_init_code() -> &'static [u8] {
     unsafe {
-        core::ptr::slice_from_raw_parts(
-            &raw const init_code,
-            (&raw const init_code_end).offset_from_unsigned(&raw const init_code),
+        slice::from_raw_parts(
+            &raw const init_code_start,
+            (&raw const init_code_end).offset_from_unsigned(&raw const init_code_start),
         )
     }
+}
+
+fn clone_init_code() -> Result<*const Page> {
+    let code_page = heap::alloc::<Page>()?;
+    let init_code = get_init_code();
+    debug_assert!(init_code.len() < size_of::<Page>());
+    // Safety:
+    // All bytes until `length` are uniquely owned
+    unsafe { slice::from_raw_parts_mut(code_page.cast::<u8>(), init_code.len()) }
+        .copy_from_slice(init_code);
+    Ok(code_page)
 }
 
 #[repr(C)]
@@ -95,9 +107,11 @@ pub fn setup_init_proc() -> Result<()> {
     let pid = NEXT_PID.fetch_add(1, Ordering::Relaxed);
     let mut init = Process::with_pid(pid)?;
 
-    let mapped_code = init
-        .page_table
-        .map_memory(Phys::from_virt(get_init_code()), PagePerm::UserRo)?;
+    let code_page = clone_init_code()?;
+    let mapped_code = init.page_table.map_memory(
+        Phys::from_virt(Page::as_slice_ptr(code_page)),
+        PagePerm::UserRo,
+    )?;
 
     setup_proc_stack(&mut init, mapped_code.as_ptr().addr())?;
     let init = Arc::new(init)?;
