@@ -10,9 +10,9 @@ use crate::{
             queue::{DesctriptorIndex, Flag, VirtQueue},
         },
     },
-    interrupts::without_irq,
+    interrupts::{without_irq, InterruptHandler},
     phys::Phys,
-    sched::sleep_on,
+    sched::{sleep_on, wakeup},
     spinlock::SpinLock,
 };
 
@@ -181,7 +181,9 @@ impl Device for VirtioBlk {
 
         Ok(())
     }
+}
 
+impl InterruptHandler for VirtioBlk {
     fn ack_interrupt(&self) {
         let mut queue = self.queue.lock();
         queue.check_used_ring_progress();
@@ -189,5 +191,6 @@ impl Device for VirtioBlk {
         // Safety:
         // regs are MMIO
         unsafe { self.regs.interrupt_ack.get().write_volatile(int_status) };
+        wakeup(ptr::from_ref(self).addr());
     }
 }

@@ -7,6 +7,4 @@ pub trait Device {
 
     #[allow(unused)]
     fn write(&self, buf: &[u8; SECTOR_SIZE], sector: usize) -> Result<()>;
-
-    fn ack_interrupt(&self);
 }

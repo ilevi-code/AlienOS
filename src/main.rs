@@ -50,7 +50,7 @@ use mmu::TranslationTable;
 use spinlock::SpinLock;
 
 use crate::alloc::Arc;
-use crate::interrupts::Interrupt;
+use crate::interrupts::{register_handler, Interrupt};
 use crate::sys::register_disk;
 use crate::{alloc::Unique, interrupts::InterruptController};
 
@@ -135,11 +135,13 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
     let queue = drivers::virtio::VirtQueue::new().expect("virt-queue allocation failed");
     let blk = blk.add_queue(queue).expect("Queue negotiation failed");
     let disk = Arc::new(blk).expect("Failed to allocation disk struct");
-    register_disk(
+    register_disk(Arc::<drivers::virtio::VirtioBlk>::clone(&disk))
+        .expect("Failed to register disk");
+    register_handler(
         Arc::<drivers::virtio::VirtioBlk>::clone(&disk),
         Interrupt::Spi(0x2f),
     )
-    .expect("Failed to register disk");
+    .expect("Failed to register disk as handler");
 
     sys::init_syscalls().expect("Failed to init syscall table");
     sched::setup_init_proc().expect("Failed to setup init");

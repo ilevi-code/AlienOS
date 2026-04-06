@@ -1,6 +1,7 @@
 mod data_abort;
 mod gic_cpu;
 mod gic_dispatcher;
+mod handlers;
 mod interrupt;
 mod interrupt_stack;
 mod interrupt_table;
@@ -11,6 +12,7 @@ mod timer;
 
 pub use gic_cpu::GicCpu;
 pub use gic_dispatcher::GicDispatcher;
+pub use handlers::{register_handler, InterruptHandler};
 pub use interrupt::Interrupt;
 pub use interrupt_stack::{call_in_new_stack, setup_interrupt_stacks};
 pub use interrupt_table::svc_handler_pointer;
