@@ -31,6 +31,7 @@ mod mmu;
 mod num;
 mod panic_handler;
 mod phys;
+mod ring_buffer;
 mod sched;
 mod semihosting;
 mod spinlock;
