@@ -5,7 +5,7 @@ use super::{
     parse::Parse,
     tokens::{Token, TokenReader},
 };
-use crate::console::Pl011Regs;
+use crate::drivers::pl011::Pl011Regs;
 use crate::phys::Phys;
 
 #[derive(Debug)]

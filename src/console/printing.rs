@@ -1,15 +1,22 @@
-use core::fmt::{self, Write};
+use core::{
+    fmt::{self, Write},
+    ptr::NonNull,
+};
 
 use crate::{
+    alloc::Unique,
     console::{
         print_buf::{PrintBuf as GenericPrintBuf, ENTRY_MAX_LENGTH},
         write_buffer::FmtBuffer,
-        Pl011Regs,
     },
+    drivers::pl011::Pl011Regs,
     SpinLock,
 };
 
-use super::pl011::SERIAL;
+pub static SERIAL: SpinLock<Unique<Pl011Regs>> = SpinLock::new(Unique::from_non_null(
+    NonNull::new(0x9000000 as *mut Pl011Regs).unwrap(),
+));
+
 type PrintBuf = GenericPrintBuf<1024>;
 
 static PRINT_BUF: SpinLock<PrintBuf> = SpinLock::new(PrintBuf::new());

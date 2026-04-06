@@ -42,9 +42,9 @@ use core::slice;
 
 use alloc::Vec;
 use arch::PeMode;
-use console::Pl011Regs;
 use console::SERIAL;
 use device_tree::{DeviceTree, Memory};
+use drivers::pl011::Pl011Regs;
 use memory_model::{get_kernel_location, KERN_LINK};
 use mmu::TranslationTable;
 use spinlock::SpinLock;

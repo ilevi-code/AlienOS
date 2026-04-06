@@ -1,6 +1,6 @@
 use core::ptr::NonNull;
 
-use crate::{SpinLock, Unique};
+use crate::{error::Result, SpinLock, Unique};
 
 #[repr(C)]
 pub struct Pl011Regs {
@@ -56,6 +56,8 @@ const_assert!(core::mem::offset_of!(Pl011Regs, interrupt_clear) == 0x44);
 
 use core::ptr::{addr_of, addr_of_mut};
 use paste::paste;
+
+const FLAG_RX_FIFO_EMPTY: u32 = 1 << 4;
 
 impl Pl011Regs {
     volatile_reg!(data);
