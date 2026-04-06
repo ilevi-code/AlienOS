@@ -126,16 +126,14 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
 
     let mut kern_table = TranslationTable::get_kernel();
     let disk_mmio = kern_table
-        .map_device(phys::Phys::<drivers::virtio_blk::regs::VirtioRegs>::from(
-            0xa003e00,
-        ))
+        .map_device(phys::Phys::<drivers::virtio::VirtioRegs>::from(0xa003e00))
         .unwrap();
-    let blk = drivers::virtio_blk::VirtioBlkBuilder::new(Unique::from(disk_mmio)).unwrap();
-    let queue = drivers::virtio_blk::virt_queue::VirtQueue::new().unwrap();
+    let blk = drivers::virtio::VirtioBlkBuilder::new(Unique::from(disk_mmio)).unwrap();
+    let queue = drivers::virtio::VirtQueue::new().unwrap();
     let blk = blk.add_queue(queue).unwrap();
     let disk = Arc::new(blk).expect("Failed to allocation disk struct");
     register_disk(
-        Arc::<drivers::virtio_blk::VirtioBlk>::clone(&disk),
+        Arc::<drivers::virtio::VirtioBlk>::clone(&disk),
         Interrupt::Spi(0x2f),
     )
     .expect("Failed to register disk");

@@ -60,3 +60,8 @@ pub fn set_stack_for_pe(stack: usize, mode: PeMode) {
         );
     }
 }
+
+#[inline]
+pub fn data_sync() {
+    unsafe { asm!("dsb") }
+}
