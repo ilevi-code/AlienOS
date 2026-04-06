@@ -18,10 +18,10 @@ pub struct VirtioRegs {
     _reserved2: [u32; 2],
     queue_ready: u32,
     _reserved3: [u32; 2],
-    pub queue_notify: UnsafeCell<u32>,
+    queue_notify: UnsafeCell<u32>,
     _reserved4: [u32; 3],
     interrupt_status: u32,
-    pub interrupt_ack: UnsafeCell<u32>,
+    interrupt_ack: UnsafeCell<u32>,
     _reserved5: [u32; 2],
     status: u32,
     _reserved6: [u32; 3],
@@ -39,7 +39,7 @@ pub struct VirtioRegs {
 
 use static_assertions::const_assert;
 
-use crate::{volatile_reg, volatile_reg_read, volatile_reg_write};
+use crate::{volatile_reg, volatile_reg_cell_write, volatile_reg_read, volatile_reg_write};
 const_assert!(core::mem::offset_of!(VirtioRegs, queue_notify) == 0x50);
 const_assert!(core::mem::size_of::<VirtioRegs>() == 0x100);
 
@@ -65,10 +65,10 @@ impl VirtioRegs {
     volatile_reg_read!(queue_num_max);
     volatile_reg_write!(queue_num);
     volatile_reg!(queue_ready);
-    // volatile_reg_read!(queue_notify);
+    volatile_reg_cell_write!(queue_notify);
 
     volatile_reg_read!(interrupt_status);
-    // volatile_reg!(interrupt_ack);
+    volatile_reg_cell_write!(interrupt_ack);
 
     volatile_reg_write!(queue_desc_low);
     volatile_reg_write!(queue_desc_high);

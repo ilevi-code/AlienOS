@@ -146,7 +146,7 @@ impl Device for VirtioBlk {
 
         without_irq(|| {
             // always using queue #0
-            unsafe { self.regs.queue_notify.get().write_volatile(0) };
+            self.regs.set_queue_notify(0);
         });
 
         self.sleep_on_descriptor(descriptors.header)?;
@@ -174,7 +174,7 @@ impl Device for VirtioBlk {
 
         without_irq(|| {
             // always using queue #0
-            unsafe { self.regs.queue_notify.get().write_volatile(0) };
+            self.regs.set_queue_notify(0);
         });
 
         self.sleep_on_descriptor(descriptors.header)?;
@@ -188,9 +188,7 @@ impl InterruptHandler for VirtioBlk {
         let mut queue = self.queue.lock();
         queue.check_used_ring_progress();
         let int_status = self.regs.interrupt_status();
-        // Safety:
-        // regs are MMIO
-        unsafe { self.regs.interrupt_ack.get().write_volatile(int_status) };
+        self.regs.set_interrupt_ack(int_status);
         wakeup(ptr::from_ref(self).addr());
     }
 }
