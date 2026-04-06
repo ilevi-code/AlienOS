@@ -1,33 +1,4 @@
-use core::{cell::UnsafeCell, ptr::addr_of_mut};
-use paste::paste;
-
-#[macro_export]
-macro_rules! volatile_reg_read {
-    ($field:tt) => {
-        #[inline]
-        pub fn $field(&self) -> u32 {
-            unsafe { core::ptr::addr_of!(self.$field).read_volatile() }
-        }
-    };
-}
-
-macro_rules! volatile_reg_write {
-    ($field:tt) => {
-        paste! {
-            #[inline]
-            pub fn [< set_ $field >] (&mut self, value: u32) {
-                unsafe { addr_of_mut!(self.$field).write_volatile(value) }
-            }
-        }
-    };
-}
-
-macro_rules! volatile_reg {
-    ($field:tt) => {
-        volatile_reg_read!($field);
-        volatile_reg_write!($field);
-    };
-}
+use core::cell::UnsafeCell;
 
 #[repr(C)]
 pub struct VirtioRegs {
@@ -67,6 +38,8 @@ pub struct VirtioRegs {
 }
 
 use static_assertions::const_assert;
+
+use crate::{volatile_reg, volatile_reg_read, volatile_reg_write};
 const_assert!(core::mem::offset_of!(VirtioRegs, queue_notify) == 0x50);
 const_assert!(core::mem::size_of::<VirtioRegs>() == 0x100);
 
