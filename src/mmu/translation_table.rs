@@ -319,7 +319,7 @@ impl<'a> TranslationTable<'a> {
                 Some(end) => end - start,
                 None => 0x8000_0000 - start.0,
             };
-            if hole_size > size + PAGE_SIZE {
+            if hole_size > size + PAGE_SIZE && start.0 != 0 {
                 break;
             } else {
                 match end {
