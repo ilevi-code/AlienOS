@@ -125,12 +125,14 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
     timer.arm(timer.frequency());
 
     let mut kern_table = TranslationTable::get_kernel();
+    // TODO get address from DTB
     let disk_mmio = kern_table
         .map_device(phys::Phys::<drivers::virtio::VirtioRegs>::from(0xa003e00))
-        .unwrap();
-    let blk = drivers::virtio::VirtioBlkBuilder::new(Unique::from(disk_mmio)).unwrap();
-    let queue = drivers::virtio::VirtQueue::new().unwrap();
-    let blk = blk.add_queue(queue).unwrap();
+        .expect("Mapping disk failed");
+    let blk = drivers::virtio::VirtioBlkBuilder::new(Unique::from(disk_mmio))
+        .expect("Hardware negotiation failed");
+    let queue = drivers::virtio::VirtQueue::new().expect("virt-queue allocation failed");
+    let blk = blk.add_queue(queue).expect("Queue negotiation failed");
     let disk = Arc::new(blk).expect("Failed to allocation disk struct");
     register_disk(
         Arc::<drivers::virtio::VirtioBlk>::clone(&disk),
