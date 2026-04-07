@@ -74,7 +74,16 @@ pub fn derive_int_enum(input: TokenStream) -> TokenStream {
                     default_variant = Some(variant.ident);
                 } else {
                     variant_idents.push(variant.ident);
-                    variant_discriminants.push(variant.discriminant.unwrap().1);
+                    let Some(discriminant) = variant.discriminant else {
+                        return TokenStream::from(
+                            syn::Error::new(
+                                variant.fields.span(),
+                                "IntEnum's variants must have a value",
+                            )
+                            .to_compile_error(),
+                        );
+                    };
+                    variant_discriminants.push(discriminant.1);
                 }
             }
         }
