@@ -93,10 +93,9 @@ impl CharDev for Pl011 {
         Ok(())
     }
 
-    fn write(&self, buf: &[u8]) -> Result<()> {
-        // TODO improve this to sleep and stuff
+    fn write(&self, buf: &[User<u8>]) -> Result<()> {
         for byte in buf {
-            self.regs.set_data(*byte);
+            self.regs.set_data(byte.load()?);
         }
         Ok(())
     }

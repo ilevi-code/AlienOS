@@ -1,13 +1,10 @@
 use core::fmt::{self, Write};
 
 use crate::{
-    alloc::Arc,
-    console::{
-        print_buf::{PrintBuf as GenericPrintBuf, ENTRY_MAX_LENGTH},
+    SpinLock, alloc::Arc, console::{
+        print_buf::{ENTRY_MAX_LENGTH, PrintBuf as GenericPrintBuf},
         write_buffer::FmtBuffer,
-    },
-    drivers::{pl011::Pl011, CharDev},
-    SpinLock,
+    }, drivers::{CharDev, pl011::Pl011}, sys::AsUserBytes
 };
 
 pub static SERIAL: SpinLock<Option<Arc<Pl011>>> = SpinLock::new(None);
@@ -24,7 +21,7 @@ fn console_flush_entris(serial: &Pl011) {
             break;
         }
         // On write failure there is nothing for us to do
-        let _ = serial.write(&line_buf[..n]);
+        let _ = serial.write(line_buf[..n].as_user_bytes());
     }
 }
 
