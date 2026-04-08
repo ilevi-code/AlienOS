@@ -37,6 +37,13 @@ pub fn get_cpsr() -> usize {
     value
 }
 
+#[inline(always)]
+pub fn halt() {
+    unsafe {
+        asm!("WFI")
+    }
+}
+
 #[allow(unused)]
 pub enum PeMode {
     User = 0b10000,

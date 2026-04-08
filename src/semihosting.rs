@@ -1,5 +1,7 @@
 use core::arch::asm;
 
+use crate::arch::halt;
+
 const SYS_EXIT_EXTENDED: u32 = 0x20;
 
 const ADP_STOPPED_APPLICATIONEXIT: u32 = 0x20026;
@@ -15,6 +17,7 @@ pub(crate) fn shutdown(exit_code: u8) -> ! {
         );
     }
     // In case something failed - hang.
-    #[allow(clippy::empty_loop)]
-    loop {}
+    loop {
+        halt()
+    }
 }
