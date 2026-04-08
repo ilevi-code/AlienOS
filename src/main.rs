@@ -57,6 +57,9 @@ use crate::interrupts::{register_handler, Interrupt};
 use crate::sys::register_disk;
 use crate::{alloc::Unique, interrupts::InterruptController};
 
+// Just because, no real reason
+const SERIAL_BAUD_RATE: u32 = 115200;
+
 #[no_mangle]
 #[allow(clippy::missing_safety_doc, unreachable_code)]
 pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
@@ -100,7 +103,7 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
         .map_device(root.pl011.address)
         .unwrap()
         .into();
-    let uart = Arc::new(Pl011::new(uart).unwrap()).unwrap();
+    let uart = Arc::new(Pl011::new(uart, root.clock.frequency, SERIAL_BAUD_RATE).unwrap()).unwrap();
     *SERIAL.lock() = Some(Arc::clone(&uart));
     register_handler(Arc::<Pl011>::clone(&uart), root.pl011.interrupt.interrupt).unwrap();
     uart.enable_rx();

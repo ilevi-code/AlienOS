@@ -1,7 +1,15 @@
 use crate::{
-    SpinLock, Unique, alloc::{Arc, Box}, drivers::char_dev::CharDev, error::{Error, Result}, fs::File, interrupts::InterruptHandler, ring_buffer::RingBuffer, sys::User, volatile_reg_cell, volatile_reg_cell_write, volatile_reg_read
+    alloc::{Arc, Box},
+    drivers::char_dev::CharDev,
+    error::{Error, Result},
+    fs::File,
+    interrupts::InterruptHandler,
+    ring_buffer::RingBuffer,
+    sys::User,
+    volatile_reg_cell, volatile_reg_cell_write, volatile_reg_read, volatile_reg_write, SpinLock,
+    Unique,
 };
-use core::cell::UnsafeCell;
+use core::{cell::UnsafeCell, ptr};
 
 #[repr(C)]
 pub struct Pl011Regs {
@@ -11,8 +19,8 @@ pub struct Pl011Regs {
     flag: u32,
     _reserved1: u32,
     load_power_counter: u32,
-    integer_buad_rate: u32,
-    fractional_buad_rate: u32,
+    integer_baud_rate: u32,
+    fractional_baud_rate: u32,
     line_control: u32,
     control: u32,
     interrupt_level_select: u32,
@@ -44,6 +52,8 @@ impl Pl011Regs {
     volatile_reg_cell!(interrupt_mask);
 
     volatile_reg_read!(flag);
+    volatile_reg_write!(integer_baud_rate);
+    volatile_reg_write!(fractional_baud_rate);
 }
 
 pub struct Pl011 {
@@ -51,8 +61,18 @@ pub struct Pl011 {
     read_buffer: SpinLock<Box<RingBuffer<128>>>,
 }
 
+const CLOCK_DIVISOR: u32 = 16;
+const FRACTIONAL_PRECISION: u32 = 64;
+
 impl Pl011 {
-    pub fn new(regs: Unique<Pl011Regs>) -> Result<Self> {
+    pub fn new(mut regs: Unique<Pl011Regs>, clock: u32, baud: u32) -> Result<Self> {
+        let integer_divisor = clock / baud / CLOCK_DIVISOR;
+        let remainder = clock - (integer_divisor * baud * CLOCK_DIVISOR);
+        let fractional_divisor = remainder * FRACTIONAL_PRECISION;
+
+        regs.set_integer_baud_rate(integer_divisor);
+        regs.set_fractional_baud_rate(fractional_divisor);
+
         let buffer = Box::<RingBuffer<128>>::zeroed()?;
         Ok(Self {
             regs,
