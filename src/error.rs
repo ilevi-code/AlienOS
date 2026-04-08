@@ -33,6 +33,8 @@ pub(crate) enum Error {
     InvalidOffset,
     #[error("Not seekable")]
     NotSeekable,
+    #[error("Bad file type")]
+    BadFileType,
 }
 
 pub(super) type Result<T> = core::result::Result<T, Error>;

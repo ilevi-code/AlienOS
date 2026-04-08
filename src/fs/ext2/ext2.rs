@@ -2,7 +2,10 @@ use core::ptr::NonNull;
 
 use crate::{
     alloc::{Arc, Box, Vec},
-    drivers::block::{Device, SECTOR_SIZE},
+    drivers::{
+        block::{Device, SECTOR_SIZE},
+        char_dev::char_dev_lookup,
+    },
     error::{Error, Result},
     fs::{
         ext2::{
@@ -136,9 +139,6 @@ impl Ext2 {
                 None => return Err(Error::NoEntry),
             };
         }
-        if is_dir {
-            return Err(Error::IsADir);
-        }
         Ok(inode)
     }
 }
@@ -146,7 +146,14 @@ impl Ext2 {
 impl FileSystem for Ext2 {
     fn open(self: Arc<Self>, path: &Path) -> Result<Box<dyn File>> {
         let inode = self.path_to_inode(path)?;
-        let file: Box<dyn File> = Box::new(Ext2File::new(self, inode))?;
-        Ok(file)
+        match inode.file_type() {
+            super::inode::FileType::Regular => Ok(Box::new(Ext2File::new(self, inode))?),
+            super::inode::FileType::Directory => Err(Error::IsADir),
+            super::inode::FileType::CharDev => match char_dev_lookup(inode.block[0]) {
+                None => Err(Error::NoDevice),
+                Some(dev) => dev.open(),
+            },
+            super::inode::FileType::Unknown => Err(Error::BadFileType),
+        }
     }
 }
