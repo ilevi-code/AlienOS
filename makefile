@@ -43,6 +43,8 @@ build/fs.img: init | build
 	echo y | mkfs.ext2 -I 128 -t small -O ^sparse_super,^large_file,^resize_inode,^dir_index,^ext_attr $@
 	e2mkdir $@:/sbin
 	e2cp init/target/armv7a-none-eabi/release/init $@:/sbin/init
+	e2mkdir $@:/dev
+	./e2mknod.sh $@ /dev/console 1
 
 init:
 	cd init && cargo build --release
