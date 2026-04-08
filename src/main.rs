@@ -22,7 +22,6 @@ mod drivers;
 mod entry;
 mod error;
 mod fs;
-mod gic;
 mod heap;
 mod interrupts;
 mod memory_model;
