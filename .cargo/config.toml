@@ -1,7 +1,5 @@
 [build]
 target = "armv7a-none-eabi"
-# hack to prevent indirectly-called syscalls from being optimized out
-rustflags = ["-C", "link-dead-code"]
 
 [target.armv7a-none-eabi]
 runner = "./run_qemu.sh"

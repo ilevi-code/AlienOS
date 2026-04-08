@@ -8,6 +8,7 @@ edition = "2021"
 cc = "1.0.46"
 
 [profile.release]
+strip = true
 opt-level = "z"
 lto = true
 panic = "abort"
