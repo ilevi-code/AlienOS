@@ -1,10 +1,12 @@
 use crate::{
     alloc::{Arc, Box},
+    arch::halt,
     drivers::char_dev::CharDev,
     error::{Error, Result},
     fs::File,
     interrupts::InterruptHandler,
     ring_buffer::RingBuffer,
+    sched::{sleep_on, wakeup},
     sys::User,
     volatile_reg_cell, volatile_reg_cell_write, volatile_reg_read, volatile_reg_write, SpinLock,
     Unique,
@@ -37,6 +39,7 @@ const_assert!(core::mem::offset_of!(Pl011Regs, interrupt_mask) == 0x38);
 const_assert!(core::mem::offset_of!(Pl011Regs, interrupt_clear) == 0x44);
 
 const FLAG_RX_FIFO_EMPTY: u32 = 1 << 4;
+const FLAG_TX_FIFO_FULL: u32 = 1 << 5;
 const INT_CLEAR_RX: u32 = 1 << 4;
 const INT_MASK_ALLOW_RX: u32 = 1 << 4;
 
@@ -89,10 +92,26 @@ impl Pl011 {
         let new_mask = self.regs.interrupt_mask() & !INT_MASK_ALLOW_RX;
         self.regs.set_interrupt_mask(new_mask);
     }
+
+    fn tx_queue_full(&self) -> bool {
+        self.regs.flag() & FLAG_TX_FIFO_FULL == FLAG_TX_FIFO_FULL
+    }
+
+    fn wait_queue_emtpy(&self) {
+        // Loop since we wakeup both on rx and tx
+        while self.tx_queue_full() {
+            // Try to sleep.
+            // This will fail if there is not current process (pre-scheduler initialization), so we
+            // execute halt and wait-for-interrupt
+            if sleep_on(ptr::from_ref(self).addr()).is_err() {
+                halt();
+            };
+        }
+    }
 }
 
 struct Pl011File {
-    uart: Arc<Pl011>
+    uart: Arc<Pl011>,
 }
 
 impl File for Pl011File {
@@ -123,13 +142,13 @@ impl CharDev for Pl011 {
     fn write(&self, buf: &[User<u8>]) -> Result<()> {
         for byte in buf {
             self.regs.set_data(byte.load()?);
-            // TODO check fifo is not full, and sleep/wait-for-interrupt respectively
+            self.wait_queue_emtpy()
         }
         Ok(())
     }
 
     fn open(self: Arc<Self>) -> Result<Box<dyn File>> {
-        Ok(Box::new(Pl011File{uart: self})?)
+        Ok(Box::new(Pl011File { uart: self })?)
     }
 }
 
@@ -143,6 +162,7 @@ impl InterruptHandler for Pl011 {
         if buffer.free_len() == 0 {
             self.disable_rx();
         }
+        wakeup(ptr::from_ref(self).addr());
         self.regs.set_interrupt_clear(INT_CLEAR_RX);
     }
 }
