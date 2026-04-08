@@ -110,6 +110,16 @@ pub fn derive_int_enum(input: TokenStream) -> TokenStream {
                  }
             }
         }
+
+        impl core::convert::Into<u32> for #name
+        {
+            fn into(self) -> u32 {
+                 match self {
+                     #( Self::#variant_idents => #variant_discriminants,)*
+                     Self::#default_variant => Self::#default_variant as u32,
+                 }
+            }
+        }
     };
 
     TokenStream::from(expanded)
