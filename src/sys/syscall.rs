@@ -19,6 +19,7 @@ pub enum SyscallNumber {
     Exec = 0,
     Mount = 1,
     Exit = 2,
+    Open = 3,
 }
 
 #[macro_export]

@@ -29,8 +29,7 @@ pub struct Process {
     pub page_table: PageTable,
     pub kern_stack: Box<KernelStack>,
     pub sp: *mut u8,
-    #[allow(unused)]
-    pub fd: FdTable,
+    pub fds: FdTable,
     pub chan: AtomicUsize,
     pub state: AtomicState,
     pub fs: Arc<dyn FileSystem>,
@@ -82,7 +81,7 @@ impl Process {
             page_table: PageTable::new()?,
             kern_stack: Box::<KernelStack>::zeroed()?,
             sp: null_mut(),
-            fd: SpinLock::new(Vec::new()),
+            fds: SpinLock::new(Vec::new()),
             chan: AtomicUsize::new(0),
             state: AtomicState::new(State::Runnable),
             fs: Arc::new(NullFs::new())?,

@@ -5,6 +5,7 @@ mod errno;
 mod exec;
 mod exit;
 mod mount;
+mod open;
 mod syscall;
 
 pub use copy_user::{copy_from_user, copy_to_user, AsUserBytes, User};
