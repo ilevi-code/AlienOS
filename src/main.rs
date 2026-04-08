@@ -26,7 +26,6 @@ mod gic;
 mod heap;
 mod interrupts;
 mod memory_model;
-mod mmio;
 mod mmu;
 mod num;
 mod panic_handler;
