@@ -11,6 +11,7 @@ pub enum Errno {
     IsADir,
     NotExecutable,
     InvalidOffset,
+    NotSeekable,
 }
 
 impl From<crate::error::Error> for Errno {
@@ -22,6 +23,7 @@ impl From<crate::error::Error> for Errno {
             Error::MemoryFault => Errno::Fault,
             Error::NoDevice => Errno::NoSuchDevice,
             Error::IsADir => Errno::IsADir,
+            Error::NotSeekable => Errno::NotSeekable,
             Error::NoCurrentProcess
             | Error::Unsupproted
             | Error::OutOfRange

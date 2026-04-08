@@ -31,6 +31,8 @@ pub(crate) enum Error {
     BadElf,
     #[error("Invalid offset")]
     InvalidOffset,
+    #[error("Not seekable")]
+    NotSeekable,
 }
 
 pub(super) type Result<T> = core::result::Result<T, Error>;

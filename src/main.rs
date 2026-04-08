@@ -51,6 +51,7 @@ use mmu::TranslationTable;
 use spinlock::SpinLock;
 
 use crate::alloc::Arc;
+use crate::drivers::char_dev::{Major, char_dev_register};
 use crate::drivers::pl011::Pl011;
 use crate::interrupts::{register_handler, Interrupt};
 use crate::sys::register_disk;
@@ -103,6 +104,7 @@ pub unsafe extern "C" fn main(dtb: usize, _bootstrap_table: usize) -> ! {
     *SERIAL.lock() = Some(Arc::clone(&uart));
     register_handler(Arc::<Pl011>::clone(&uart), root.pl011.interrupt.interrupt).unwrap();
     uart.enable_rx();
+    char_dev_register(uart, Major::Pl011).expect("Failed to register uart as chardev");
 
     #[cfg(test)]
     {

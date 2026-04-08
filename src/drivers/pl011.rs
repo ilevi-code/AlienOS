@@ -1,12 +1,5 @@
 use crate::{
-    alloc::{Arc, Box},
-    drivers::char_dev::CharDev,
-    error::Result,
-    fs::File,
-    interrupts::InterruptHandler,
-    ring_buffer::RingBuffer,
-    sys::User,
-    volatile_reg_cell, volatile_reg_cell_write, volatile_reg_read, SpinLock, Unique,
+    SpinLock, Unique, alloc::{Arc, Box}, drivers::char_dev::CharDev, error::{Error, Result}, fs::File, interrupts::InterruptHandler, ring_buffer::RingBuffer, sys::User, volatile_reg_cell, volatile_reg_cell_write, volatile_reg_read
 };
 use core::cell::UnsafeCell;
 
@@ -78,6 +71,20 @@ impl Pl011 {
     }
 }
 
+struct Pl011File {
+    uart: Arc<Pl011>
+}
+
+impl File for Pl011File {
+    fn read(&mut self, buf: &mut [User<u8>]) -> Result<()> {
+        self.uart.read(buf)
+    }
+
+    fn seek(&mut self, _position: crate::fs::SeekFrom) -> Result<()> {
+        Err(Error::NotSeekable)
+    }
+}
+
 impl CharDev for Pl011 {
     fn read(&self, buf: &mut [User<u8>]) -> Result<()> {
         {
@@ -96,12 +103,13 @@ impl CharDev for Pl011 {
     fn write(&self, buf: &[User<u8>]) -> Result<()> {
         for byte in buf {
             self.regs.set_data(byte.load()?);
+            // TODO check fifo is not full, and sleep/wait-for-interrupt respectively
         }
         Ok(())
     }
 
     fn open(self: Arc<Self>) -> Result<Box<dyn File>> {
-        todo!()
+        Ok(Box::new(Pl011File{uart: self})?)
     }
 }
 
