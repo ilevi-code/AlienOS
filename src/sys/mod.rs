@@ -6,6 +6,7 @@ mod exec;
 mod exit;
 mod mount;
 mod open;
+mod write;
 mod syscall_args;
 mod syscall;
 
