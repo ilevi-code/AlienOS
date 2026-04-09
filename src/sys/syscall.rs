@@ -82,8 +82,12 @@ fn svc_handler(regs: *mut RegSet) {
         }
     };
     regs.lr += 4;
-    regs.r[0] = match syscall(regs) {
-        Ok(return_value) => return_value,
-        Err(error) => error as usize,
+    let (r0, r1) = match syscall(regs) {
+        Ok(return_value) => {
+            (0, return_value)
+        }
+        Err(error) => (1, error as usize),
     };
+    regs.r[0] = r0;
+    regs.r[1] = r1;
 }
