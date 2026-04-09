@@ -1,7 +1,4 @@
-use core::{cmp::min, slice};
-
-#[cfg(feature = "logging")]
-use crate::println;
+use core::cmp::min;
 
 use crate::{
     alloc::{Arc, Box, Vec},
@@ -14,7 +11,7 @@ use crate::{
     num::{AlignDown, AlignUp},
     sched::with_current,
     sys::{
-        AsUserBytes, ElfHeader, ProgramHeader, SyscallResult, User, ELF_IDENT_CLASS32,
+        AsUserBytes, ElfHeader, ProgramHeader, SyscallArgs, SyscallResult, User, ELF_IDENT_CLASS32,
         ELF_IDENT_DATA_2LSB, ELF_IDENT_MAGIC, ELF_MACHINE_ARM, ELF_SEGMENT_TYPE_LOAD,
         ELF_TYPE_EXEC, ELF_VERSION_CURRENT,
     },
@@ -24,11 +21,9 @@ use crate::{
 syscall!(exec);
 
 fn exec(regs: &mut RegSet) -> SyscallResult {
-    let mut dest = [0_u8; 10];
-    crate::sys::copy_from_user(&mut dest, unsafe {
-        slice::from_raw_parts(regs.r[1] as *const User<u8>, 10)
-    })?;
-    let path = Path::new(&dest);
+    let mut args = Into::<SyscallArgs>::into(&regs.r[..]);
+    let path_buf = args.get_string()?;
+    let path = Path::new(&path_buf[..]);
 
     log!("exec: {path:?}");
 

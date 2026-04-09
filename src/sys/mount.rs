@@ -6,23 +6,21 @@ use crate::{
     fs::Ext2,
     interrupts::RegSet,
     sched::with_current,
-    sys::{SyscallResult, User},
+    sys::{SyscallArgs, SyscallResult},
     syscall,
 };
 
 syscall!(mount);
 
 fn mount(regs: &mut RegSet) -> SyscallResult {
-    let mut dest = [0_u8; 4];
-    crate::sys::copy_from_user(&mut dest, unsafe {
-        slice::from_raw_parts(regs.r[2] as *const User<u8>, 4)
-    })?;
-    let disk_id = regs.r[1];
+    let mut args = Into::<SyscallArgs>::into(&regs.r[..]);
+    let disk_id = args.next_reg()?;
+    let fs_type = args.get_string()?;
 
     log!(
         "mounting disk {} as {}",
         disk_id,
-        str::from_utf8(&dest).unwrap_or("<bad filesystem>")
+        str::from_utf8(&fs_type[..]).unwrap_or("<bad filesystem>")
     );
 
     let disk = crate::sys::disk::get_disk_by_id(disk_id).ok_or(Error::NoDevice)?;

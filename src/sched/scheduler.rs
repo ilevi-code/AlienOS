@@ -35,6 +35,7 @@ global_asm!(
     "mov r1, #0",
     "push {{r0, r1}}",
     "mov r2, sp",
+    "mov r3, #4",
     // disk #0
     "mov r1, 0",
     // sys_mount
@@ -50,10 +51,11 @@ global_asm!(
     "movt r2, #0",
     "push {{r0, r1, r2}}",
     "mov r1, sp",
+    "mov r2, #10",
     // push null
     "mov r0, 0",
     "push {{r0}}",
-    "mov r2, sp",
+    "mov r3, sp",
     // exec("/sbin/init", null)
     "svc #0",
     "mov r1, 1",
