@@ -6,6 +6,7 @@ mod exec;
 mod exit;
 mod mount;
 mod open;
+mod syscall_args;
 mod syscall;
 
 pub use copy_user::{copy_from_user, copy_to_user, AsUserBytes, User};
@@ -16,3 +17,4 @@ pub use elf::{
 };
 pub use errno::{Errno, SyscallResult};
 pub use syscall::{init_syscalls, Syscall, SyscallNumber};
+pub use syscall_args::SyscallArgs;

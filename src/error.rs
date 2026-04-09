@@ -35,6 +35,10 @@ pub(crate) enum Error {
     NotSeekable,
     #[error("Bad file type")]
     BadFileType,
+    #[error("End of syscall args")]
+    EndOfSyscallArgs,
+    #[error("Name too long")]
+    NameTooLong,
 }
 
 pub(super) type Result<T> = core::result::Result<T, Error>;

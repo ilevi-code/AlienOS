@@ -13,6 +13,7 @@ pub enum Errno {
     InvalidOffset,
     NotSeekable,
     BadFileType,
+    NameTooLong,
 }
 
 impl From<crate::error::Error> for Errno {
@@ -26,10 +27,12 @@ impl From<crate::error::Error> for Errno {
             Error::NoDevice => Errno::NoSuchDevice,
             Error::IsADir => Errno::IsADir,
             Error::NotSeekable => Errno::NotSeekable,
+            Error::NameTooLong => Errno::NameTooLong,
             Error::NoCurrentProcess
             | Error::Unsupproted
             | Error::OutOfRange
             | Error::Remap
+            | Error::EndOfSyscallArgs
             | Error::LayoutError(_) => Errno::Internal,
             Error::NoEntry => Errno::NotADir,
             Error::NotADir => Errno::NoEntry,
