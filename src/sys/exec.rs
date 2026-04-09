@@ -9,6 +9,7 @@ use crate::{
     error::{Error, Result},
     fs::{File, FileSystem, Path, SeekFrom},
     interrupts::RegSet,
+    log,
     mmu::{PagePerm, PageTable},
     num::{AlignDown, AlignUp},
     sched::with_current,
@@ -29,8 +30,7 @@ fn exec(regs: &mut RegSet) -> SyscallResult {
     })?;
     let path = Path::new(&dest);
 
-    #[cfg(feature = "logging")]
-    println!("exec: {path:?}");
+    log!("exec: {path:?}");
 
     let fs = with_current(|current| Arc::clone(&current.fs))?;
     let file = FileSystem::open(Arc::clone(&fs), path)?;

@@ -1,7 +1,4 @@
-use core::slice;
-
-#[cfg(feature = "logging")]
-use crate::println;
+use crate::log;
 
 use crate::{
     alloc::Arc,
@@ -22,8 +19,7 @@ fn mount(regs: &mut RegSet) -> SyscallResult {
     })?;
     let disk_id = regs.r[1];
 
-    #[cfg(feature = "logging")]
-    println!(
+    log!(
         "mounting disk {} as {}",
         disk_id,
         str::from_utf8(&dest).unwrap_or("<bad filesystem>")

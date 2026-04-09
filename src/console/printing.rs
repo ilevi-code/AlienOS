@@ -66,5 +66,18 @@ macro_rules! print {
     }};
 }
 
+#[macro_export]
+macro_rules! log {
+    () => {
+        #[cfg(feature = "logging")]
+        $crate::console::print!("\n")
+    };
+    ($($arg:tt)*) => {{
+        #[cfg(feature = "logging")]
+        $crate::console::println!($($arg)*);
+    }};
+}
+
 pub use print;
 pub use println;
+pub use log;
