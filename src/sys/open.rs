@@ -21,7 +21,7 @@ fn open(regs: &mut RegSet) -> SyscallResult {
         let mut fds = current.fds.lock();
         // TODO check for empty spaces
         fds.push(Some(SpinLock::new(file)))?;
-        Ok(fds.len())
+        Ok(fds.len() - 1)
     })??;
     Ok(fd)
 }
