@@ -109,4 +109,8 @@ impl File for Ext2File {
         self.file_offset = new_offset;
         Ok(())
     }
+
+    fn write(&mut self, buf: &[User<u8>]) -> Result<()> {
+        todo!()
+    }
 }

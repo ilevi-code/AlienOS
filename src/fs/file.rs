@@ -10,4 +10,6 @@ pub trait File {
     fn read(&mut self, buf: &mut [User<u8>]) -> Result<()>;
 
     fn seek(&mut self, position: SeekFrom) -> Result<()>;
+
+    fn write(&mut self, buf: &[User<u8>]) -> Result<()>;
 }

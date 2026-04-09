@@ -122,6 +122,10 @@ impl File for Pl011File {
     fn seek(&mut self, _position: crate::fs::SeekFrom) -> Result<()> {
         Err(Error::NotSeekable)
     }
+
+    fn write(&mut self, buf: &[User<u8>]) -> Result<()> {
+        self.uart.write(buf)
+    }
 }
 
 impl CharDev for Pl011 {
