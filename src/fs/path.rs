@@ -6,7 +6,7 @@ pub struct Path {
 
 impl Path {
     pub fn new(bytes: &[u8]) -> &Self {
-        unsafe { &*(bytes as *const [u8] as *const Path) }
+        unsafe { core::mem::transmute(bytes) }
     }
 }
 
