@@ -14,11 +14,13 @@ pub enum Errno {
     NotSeekable,
     BadFileType,
     NameTooLong,
+    BadFd,
 }
 
 impl From<crate::error::Error> for Errno {
     fn from(value: crate::error::Error) -> Self {
         match value {
+            Error::BadFd => Errno::BadFd,
             Error::BadFileType => Errno::BadFileType,
             Error::InvalidOffset => Errno::InvalidOffset,
             Error::BadElf => Errno::NotExecutable,

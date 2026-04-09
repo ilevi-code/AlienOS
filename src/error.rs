@@ -39,6 +39,8 @@ pub(crate) enum Error {
     EndOfSyscallArgs,
     #[error("Name too long")]
     NameTooLong,
+    #[error("Bad file descriptor")]
+    BadFd,
 }
 
 pub(super) type Result<T> = core::result::Result<T, Error>;
