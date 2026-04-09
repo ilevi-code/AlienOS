@@ -2,6 +2,7 @@ use crate::{
     alloc::Arc,
     fs::{FileSystem, Path},
     interrupts::RegSet,
+    log,
     sched::with_current,
     spinlock::SpinLock,
     sys::{SyscallArgs, SyscallResult},
@@ -15,12 +16,13 @@ fn open(regs: &mut RegSet) -> SyscallResult {
     let path_buf = args.get_string()?;
 
     let path = Path::new(&path_buf[..]);
+    log!("opening {path:?}");
     let fs = with_current(|current| Arc::clone(&current.fs))?;
     let file = FileSystem::open(Arc::clone(&fs), path)?;
     let fd = with_current(|current| -> crate::error::Result<usize> {
         let mut fds = current.fds.lock();
         // TODO check for empty spaces
-        fds.push(Some(SpinLock::new(file)))?;
+        fds.push(Some(Arc::new(SpinLock::new(file))?))?;
         Ok(fds.len() - 1)
     })??;
     Ok(fd)

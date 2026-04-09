@@ -22,7 +22,12 @@ pub enum State {
 #[repr(align(4096))]
 pub struct KernelStack(#[allow(unused)] pub [u8; PAGE_SIZE]);
 
-type FdTable = SpinLock<Vec<Option<SpinLock<Box<dyn File>>>>>;
+// We can't know the type of file, so we need a pointer, and an owning type.
+type DynFile = Box<dyn File>;
+// We need share ownership of the files, but also to be able to get a mutable reference
+pub type FileTableEntry = Arc<SpinLock<DynFile>>;
+// Fd-table can have holes, so optional entries.
+type FdTable = SpinLock<Vec<Option<FileTableEntry>>>;
 
 pub struct Process {
     pub pid: u32,
