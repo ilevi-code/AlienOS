@@ -3,6 +3,7 @@
 
 const SYS_EXIT: usize = 2;
 const SYS_OPEN: usize = 3;
+const SYS_WRITE: usize = 4;
 
 use core::{arch::asm, panic::PanicInfo, result::Result};
 
@@ -42,6 +43,29 @@ fn open(path: &str) -> Result<usize, Errno> {
     }
 }
 
+fn write(fd: usize, data: &[u8]) -> Result<usize, Errno> {
+    let result: i32;
+    let _written: usize;
+    unsafe {
+        asm!(
+            "svc #0",
+            "mov {result}, r0",
+            "mov {written}, r1",
+            result = out(reg) result,
+            written = out(reg) _written,
+            in("r0") SYS_WRITE,
+            in("r1") fd,
+            in("r2") data.as_ptr(),
+            in("r3") data.len()
+        )
+    }
+    if result == 0 {
+        Ok(fd)
+    } else {
+        Err(Errno::Unknown)
+    }
+}
+
 #[unsafe(no_mangle)]
 extern "C" fn _init() {
     let exit_code = match main() {
@@ -52,6 +76,7 @@ extern "C" fn _init() {
 }
 
 fn main() -> Result<(), Errno> {
-    let _console = open("/dev/console")?;
+    let console = open("/dev/console")?;
+    write(console, b"hello world!\n")?;
     Ok(())
 }
