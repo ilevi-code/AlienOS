@@ -178,6 +178,10 @@ impl<'a, T> IntoIterator for &'a Vec<T> {
     type IntoIter = Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self[..].iter()
+        if self.empty() {
+            [].iter()
+        } else {
+            self[..].iter()
+        }
     }
 }
