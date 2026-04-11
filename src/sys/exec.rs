@@ -11,7 +11,7 @@ use crate::{
     num::{AlignDown, AlignUp},
     sched::with_current,
     sys::{
-        AsUserBytes, ElfHeader, ProgramHeader, SyscallArgs, SyscallResult, User, ELF_IDENT_CLASS32,
+        AsUserBytes, ElfHeader, ProgramHeader, SyscallArgs, SyscallResult, ELF_IDENT_CLASS32,
         ELF_IDENT_DATA_2LSB, ELF_IDENT_MAGIC, ELF_MACHINE_ARM, ELF_SEGMENT_TYPE_LOAD,
         ELF_TYPE_EXEC, ELF_VERSION_CURRENT,
     },
@@ -95,8 +95,9 @@ fn map_file(
     len: usize,
 ) -> Result<()> {
     let file_offset = file_offset.align_down(SECTOR_SIZE);
-    let virt = virt.align_down(SECTOR_SIZE);
-    let len = len.align_up(SECTOR_SIZE);
+    let aligned_virt = virt.align_down(SECTOR_SIZE);
+    let addr_reduction = virt - aligned_virt;
+    let len = (len + addr_reduction).align_up(SECTOR_SIZE);
     map_file_sector_aligned(file, file_offset, page_table, virt, len)
 }
 
